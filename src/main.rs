@@ -56,16 +56,20 @@ fn main() {
 
     let stop_var_loop = stop_var;
     while ! (*stop_var_loop).load(Ordering::Relaxed) {
+        print!("You: ");
         let stdin = io::stdin();
         for line in stdin.lock().lines() {
             if let Some(convo) = conversation_manager.get(&conversation_uuid) {
                 let input = line.unwrap();
-                if convo.add_user_input(&input).is_err() {
-                    error!("{} couldn't hear you", BOT_NAME)
-                } else {
-                    let output = conversation_model.generate_responses(&mut conversation_manager);
-                    println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
+                if ! input.is_empty() {
+                    if convo.add_user_input(&input).is_err() {
+                        error!("{} couldn't hear you", BOT_NAME)
+                    } else {
+                        let output = conversation_model.generate_responses(&mut conversation_manager);
+                        println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
+                    }
                 }
+                print!("You: ");
             }
         }
     }
