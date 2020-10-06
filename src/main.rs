@@ -4,7 +4,6 @@ use std::fs;
 use std::path::{PathBuf};
 
 use std::io;
-use std::io::prelude::*;
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
@@ -24,15 +23,17 @@ fn main() {
     let mut conversation = Conversation::new_empty();
 
     let history_path: PathBuf = PathBuf::from(r"./past.history");
-    let user_past = fs::read_to_string(history_path).unwrap_or_else(|_| {
+    let user_past_str = fs::read_to_string(&history_path).unwrap_or_else(|_| {
         info!("{} does not know you yet", BOT_NAME);
         "".to_string()
     });
 
-    for line in user_past.lines() {
+    let mut user_past: Vec<String> = user_past_str.lines().map(|i| i.to_string()).filter(|x| !x.is_empty()).collect();
+
+    for line in &user_past {
         #[allow(clippy::collapsible_if)]
         if ! line.is_empty() {
-            if conversation.add_user_input(line).is_err() {
+            if conversation.add_user_input(&line).is_err() {
                 error!("{} failed to remember", BOT_NAME);
             }
         }
@@ -55,24 +56,26 @@ fn main() {
     .expect("Error setting Ctrl-C handler");
 
     let stop_var_loop = stop_var;
+    let mut input = String::new();
     while ! (*stop_var_loop).load(Ordering::Relaxed) {
         print!("You: ");
-        let stdin = io::stdin();
-        for line in stdin.lock().lines() {
-            if let Some(convo) = conversation_manager.get(&conversation_uuid) {
-                let input = line.unwrap();
-                if ! input.is_empty() {
-                    if convo.add_user_input(&input).is_err() {
-                        error!("{} couldn't hear you", BOT_NAME)
-                    } else {
-                        let output = conversation_model.generate_responses(&mut conversation_manager);
-                        println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
-                    }
-                }
-                print!("You: ");
+        if io::stdin().read_line(&mut input).is_err() {
+            error!("You lost your voice");
+            continue;
+        }
+        if let Some(convo) = conversation_manager.get(&conversation_uuid) {
+            if convo.add_user_input(&input).is_err() {
+                error!("{} couldn't hear you", BOT_NAME);
+                continue;
             }
+            let output = conversation_model.generate_responses(&mut conversation_manager);
+            println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
+            user_past.push(input.clone());
         }
     }
 
     info!("Leaving town");
+    if std::fs::write(&history_path, user_past.iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<String>>().join("\n").as_bytes()).is_err() {
+        error!("{} just lost their memory", BOT_NAME)
+    }
 }
