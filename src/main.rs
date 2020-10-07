@@ -15,7 +15,7 @@ const BOT_NAME: &str = "Holly";
 
 fn main() {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "alone=info");
+        std::env::set_var("RUST_LOG", "alone=debug,cached_path::cache=info");
     }
     pretty_env_logger::init();
 
@@ -41,20 +41,30 @@ fn main() {
 
     conversation.mark_processed();
 
+    debug!("Loading conv manager");
     let mut conversation_manager = ConversationManager::new();
     let conversation_uuid = conversation_manager.add(conversation);
 
+    debug!("Loading conv model");
     let conversation_config = ConversationConfig::default();
     let conversation_model = ConversationModel::new(conversation_config).expect("Unable to setup model");
 
     let stop_var = Arc::new(AtomicBool::new(false));
 
+    debug!("Setting up stop signals");
     let stop_var_signal = stop_var.clone();
+    let mut signal_count = 0;
     ctrlc::set_handler(move || {
-        (*stop_var_signal).store(true, Ordering::Relaxed);
+        if signal_count > 0 {
+            std::process::exit(1);
+        } else {
+            (*stop_var_signal).store(true, Ordering::Relaxed);
+            signal_count += 1;
+        }
     })
     .expect("Error setting Ctrl-C handler");
 
+    debug!("Starting conv");
     let stop_var_loop = stop_var;
     let mut input = String::new();
     while ! (*stop_var_loop).load(Ordering::Relaxed) {
