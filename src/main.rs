@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{PathBuf};
 
 use std::io;
+use std::io::prelude::*;
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
@@ -49,26 +50,26 @@ fn main() {
     let conversation_config = ConversationConfig::default();
     let conversation_model = ConversationModel::new(conversation_config).expect("Unable to setup model");
 
-    let stop_var = Arc::new(AtomicBool::new(false));
+    let keep_running = Arc::new(AtomicBool::new(true));
 
     debug!("Setting up stop signals");
-    let stop_var_signal = stop_var.clone();
+    let keep_running_signal = keep_running.clone();
     let mut signal_count = 0;
     ctrlc::set_handler(move || {
         if signal_count > 0 {
             std::process::exit(1);
         } else {
-            (*stop_var_signal).store(true, Ordering::Relaxed);
+            (*keep_running_signal).store(true, Ordering::Release);
             signal_count += 1;
         }
     })
     .expect("Error setting Ctrl-C handler");
 
-    debug!("Starting conv");
-    let stop_var_loop = stop_var;
     let mut input = String::new();
-    while ! (*stop_var_loop).load(Ordering::Relaxed) {
+    debug!("Starting conv");
+    while (*keep_running).load(Ordering::Acquire) {
         print!("You: ");
+        io::stdout().flush().expect("Could not flush stdout");
         if io::stdin().read_line(&mut input).is_err() {
             error!("You lost your voice");
             continue;
