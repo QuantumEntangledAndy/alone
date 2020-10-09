@@ -65,14 +65,20 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let mut input = String::new();
     debug!("Starting conv");
     while (*keep_running).load(Ordering::Acquire) {
         print!("You: ");
+        let mut input = String::new();
         io::stdout().flush().expect("Could not flush stdout");
         if io::stdin().read_line(&mut input).is_err() {
             error!("You lost your voice");
             continue;
+        }
+        if ! (*keep_running).load(Ordering::Acquire) {
+            break;
+        }
+        if input == "quit" {
+            break;
         }
         if let Some(convo) = conversation_manager.get(&conversation_uuid) {
             if convo.add_user_input(&input).is_err() {
