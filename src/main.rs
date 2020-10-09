@@ -1,4 +1,7 @@
 use rust_bert::pipelines::conversation::{ConversationModel, ConversationManager, Conversation, ConversationConfig};
+use rust_bert::pipelines::zero_shot_classification::ZeroShotClassificationModel;
+use rust_bert::pipelines::sentiment::SentimentModel;
+use rust_bert::pipelines::ner::NERModel;
 
 use std::fs;
 use std::path::{PathBuf};
@@ -52,6 +55,17 @@ fn main() {
 
     let keep_running = Arc::new(AtomicBool::new(true));
 
+    debug!("Loading Classification model");
+    let sequence_classification_model = ZeroShotClassificationModel::new(Default::default()).expect("Unable to setup model");
+    let candidate_labels = &["love", "hello", "location", "time", "sex"];
+
+    debug!("Loading sentiment model");
+    let sentiment_classifier = SentimentModel::new(Default::default()).expect("Unable to setup model");
+
+    debug!("Loading entity model");
+    let ner_model = NERModel::new(Default::default()).expect("Unable to setup model");
+
+
     debug!("Setting up stop signals");
     let keep_running_signal = keep_running.clone();
     let mut signal_count = 0;
@@ -77,17 +91,36 @@ fn main() {
         if ! (*keep_running).load(Ordering::Acquire) {
             break;
         }
-        if input == "quit" {
-            break;
-        }
-        if let Some(convo) = conversation_manager.get(&conversation_uuid) {
-            if convo.add_user_input(&input).is_err() {
-                error!("{} couldn't hear you", BOT_NAME);
-                continue;
+        if input.len() > 1 {
+            debug!("Dialogue");
+            if let Some(convo) = conversation_manager.get(&conversation_uuid) {
+                if convo.add_user_input(&input).is_err() {
+                    error!("{} couldn't hear you", BOT_NAME);
+                    continue;
+                }
+                let output = conversation_model.generate_responses(&mut conversation_manager);
+                println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
+                user_past.push(input.clone());
             }
-            let output = conversation_model.generate_responses(&mut conversation_manager);
-            println!("{}: {}", BOT_NAME, output[&conversation_uuid]);
-            user_past.push(input.clone());
+
+            debug!("Classification");
+            let output = sequence_classification_model.predict_multilabel(
+                &[&input],
+                candidate_labels,
+                None,
+                128,
+            );
+            debug!("{:?}", output);
+
+            debug!("Sentiment");
+            let output = sentiment_classifier.predict(&[&input]);
+            debug!("{:?}", output);
+
+            debug!("Entities");
+            let output = ner_model.predict(&[&input]);
+            debug!("{:?}", output);
+        } else {
+            break;
         }
     }
 
