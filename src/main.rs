@@ -83,6 +83,7 @@ fn main() -> Result<(), Error> {
             if conv.add_past("./past.history").is_err() {
                 error!("{} couldn't remember the past.", BOT_NAME);
             }
+            (*ready_count).fetch_sub(1, Ordering::Release);
 
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
@@ -102,7 +103,6 @@ fn main() -> Result<(), Error> {
                 error!("{} failed to remember todays session.", BOT_NAME);
             }
             (*keep_running).store(false, Ordering::Release);
-            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -111,7 +111,7 @@ fn main() -> Result<(), Error> {
         s.spawn(move |_| {
             debug!("Loading Classification model");
             let classy = Classy::new();
-
+            (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     debug!("Classification");
@@ -120,7 +120,6 @@ fn main() -> Result<(), Error> {
                 }
             }
             (*keep_running).store(false, Ordering::Release);
-            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -129,7 +128,7 @@ fn main() -> Result<(), Error> {
         s.spawn(move |_| {
             debug!("Loading sentiment model");
             let senti = Senti::new();
-
+            (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     debug!("Sentiment");
@@ -138,7 +137,6 @@ fn main() -> Result<(), Error> {
                 }
             }
             (*keep_running).store(false, Ordering::Release);
-            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -147,7 +145,7 @@ fn main() -> Result<(), Error> {
         s.spawn(move |_| {
             debug!("Loading entity model");
             let enti =  Enti::new();
-
+            (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     debug!("Entities");
@@ -156,34 +154,35 @@ fn main() -> Result<(), Error> {
                 }
             }
             (*keep_running).store(false, Ordering::Release);
-            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            while (*ready_count).load(Ordering::Acquire) > 0 {
+            while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
-            debug!("Starting conv");
-            while (*keep_running).load(Ordering::Acquire) {
-                print!("You: ");
-                let mut input = String::new();
-                io::stdout().flush().expect("Could not flush stdout");
-                if io::stdin().read_line(&mut input).is_err() {
-                    error!("You lost your voice");
-                    continue;
-                }
-                if ! (*keep_running).load(Ordering::Acquire) {
-                    break;
-                }
-                if input.len() > 1 {
-                    if send_input.send(input.to_string()).is_err() {
-                        error!("You lost your voice")
+            if (*keep_running).load(Ordering::Acquire) {
+                debug!("Starting conv");
+                while (*keep_running).load(Ordering::Acquire) {
+                    print!("You: ");
+                    let mut input = String::new();
+                    io::stdout().flush().expect("Could not flush stdout");
+                    if io::stdin().read_line(&mut input).is_err() {
+                        error!("You lost your voice");
+                        continue;
                     }
-                } else {
-                    (*keep_running).store(false, Ordering::Release);
-                    break;
+                    if ! (*keep_running).load(Ordering::Acquire) {
+                        break;
+                    }
+                    if input.len() > 1 {
+                        if send_input.send(input.to_string()).is_err() {
+                            error!("You lost your voice")
+                        }
+                    } else {
+                        (*keep_running).store(false, Ordering::Release);
+                        break;
+                    }
                 }
             }
         });
