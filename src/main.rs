@@ -4,7 +4,7 @@ use crossbeam::scope;
 use std::io;
 use std::io::prelude::*;
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
 
 use log::*;
 use err_derive::Error;
@@ -56,6 +56,7 @@ fn main() -> Result<(), Error> {
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
+    let ready_count_arc = Arc::new(AtomicUsize::new(4));
     let (send_input, get_input) = unbounded::<String>();
 
     debug!("Setting up stop signals");
@@ -75,6 +76,7 @@ fn main() -> Result<(), Error> {
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
         let model_name = config.model_name.clone();
+        let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
             debug!("Loading conversation model");
             let conv = Arc::new(Conv::new(&model_name));
@@ -99,10 +101,12 @@ fn main() -> Result<(), Error> {
                 error!("{} failed to remember todays session.", BOT_NAME);
             }
             (*keep_running).store(false, Ordering::Release);
+            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
+        let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
             debug!("Loading Classification model");
             let classy = Classy::new();
@@ -114,10 +118,12 @@ fn main() -> Result<(), Error> {
                 debug!("{:?}", output);
             }
             (*keep_running).store(false, Ordering::Release);
+            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
+        let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
             debug!("Loading sentiment model");
             let senti = Senti::new();
@@ -129,10 +135,12 @@ fn main() -> Result<(), Error> {
                 debug!("{:?}", output);
             }
             (*keep_running).store(false, Ordering::Release);
+            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
+        let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
             debug!("Loading entity model");
             let enti =  Enti::new();
@@ -144,10 +152,15 @@ fn main() -> Result<(), Error> {
                 debug!("{:?}", output);
             }
             (*keep_running).store(false, Ordering::Release);
+            (*ready_count).fetch_sub(1, Ordering::Release);
         });
 
         let keep_running = keep_running_arc.clone();
+        let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
+            while (*ready_count).load(Ordering::Acquire) > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
             debug!("Starting conv");
             while (*keep_running).load(Ordering::Acquire) {
                 print!("You: ");
