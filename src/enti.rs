@@ -13,7 +13,7 @@ impl Enti {
         }
     }
 
-    pub fn entities(&self, input: &str) -> Entity {
-        self.model.predict(&[&input]).pop().unwrap()
+    pub fn entities(&self, input: &str) -> Option<Entity> {
+        self.model.predict(&[&input]).pop()
     }
 }

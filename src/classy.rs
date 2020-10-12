@@ -14,13 +14,13 @@ impl Classy {
         }
     }
 
-    pub fn classify(&self, input: &str) -> Vec<Label> {
+    pub fn classify(&self, input: &str) -> Option<Vec<Label>> {
         let candidate_labels = &["love", "hello", "location", "time", "sex"];
         self.model.predict_multilabel(
             &[&input],
             candidate_labels,
             None,
             128,
-        ).pop().unwrap()
+        ).pop()
     }
 }

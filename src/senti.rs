@@ -13,7 +13,7 @@ impl Senti {
         }
     }
 
-    pub fn sentimentice(&self, input: &str) -> Sentiment {
-        self.model.predict(&[&input]).pop().unwrap()
+    pub fn sentimentice(&self, input: &str) -> Option<Sentiment> {
+        self.model.predict(&[&input]).pop()
     }
 }
