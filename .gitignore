@@ -4,3 +4,4 @@ Cargo.lock
 *.model
 train/*/
 .DS_Store
+alone.toml

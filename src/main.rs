@@ -8,16 +8,19 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use log::*;
 use err_derive::Error;
+use validator::Validate;
 
 mod conv;
 mod classy;
 mod senti;
 mod enti;
+mod config;
 
 use self::conv::Conv;
 use self::classy::Classy;
 use self::senti::Senti;
 use self::enti::Enti;
+use self::config::Config;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -29,6 +32,12 @@ pub enum Error {
     UnableToSpeak,
     #[error(display = "Can't remember what happened")]
     UnableToWriteJournel,
+    #[error(display = "Config file invalid")]
+    ValidationError(#[error(source)] validator::ValidationErrors),
+    #[error(display = "Config syntax invalid")]
+    ConfigError(#[error(source)] toml::de::Error),
+    #[error(display = "Cannot read config")]
+    IoError(#[error(source)] std::io::Error),
 }
 
 
@@ -40,6 +49,9 @@ fn main() -> Result<(), Error> {
         std::env::set_var("RUST_LOG", "alone=debug,cached_path::cache=info");
     }
     pretty_env_logger::init();
+
+    let config: Config = toml::from_str(&std::fs::read_to_string("alone.toml")?)?;
+    config.validate()?;
 
     info!("Finding {}", BOT_NAME);
 
@@ -62,9 +74,10 @@ fn main() -> Result<(), Error> {
     scope(|s| {
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
+        let model_name = config.model_name.clone();
         s.spawn(move |_| {
             debug!("Loading conversation model");
-            let conv = Arc::new(Conv::new("fairy-safe"));
+            let conv = Arc::new(Conv::new(&model_name));
             if conv.add_past("./past.history").is_err() {
                 error!("{} couldn't remember the past.", BOT_NAME);
             }
@@ -85,6 +98,7 @@ fn main() -> Result<(), Error> {
             if conv.save_past("./past.history").is_err() {
                 error!("{} failed to remember todays session.", BOT_NAME);
             }
+            (*keep_running).store(false, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -99,6 +113,7 @@ fn main() -> Result<(), Error> {
                 let output = classy.classify(&input);
                 debug!("{:?}", output);
             }
+            (*keep_running).store(false, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -113,6 +128,7 @@ fn main() -> Result<(), Error> {
                 let output = senti.sentimentice(&input);
                 debug!("{:?}", output);
             }
+            (*keep_running).store(false, Ordering::Release);
         });
 
         let input_recv = get_input.clone();
@@ -127,6 +143,7 @@ fn main() -> Result<(), Error> {
                 let output = enti.entities(&input);
                 debug!("{:?}", output);
             }
+            (*keep_running).store(false, Ordering::Release);
         });
 
         let keep_running = keep_running_arc.clone();

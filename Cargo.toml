@@ -13,6 +13,10 @@ err-derive = "*"
 pretty_env_logger = "*"
 rust-bert = "*"
 tch = "*"
+toml = "*"
 uuid = { version = "*", features = ["v4"] }
 crossbeam = "*"
+serde = { version = "*", features = ["derive"] }
 crossbeam-channel = "*"
+validator = "*"
+validator_derive = "*"
