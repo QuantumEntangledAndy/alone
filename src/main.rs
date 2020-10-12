@@ -80,12 +80,13 @@ fn main() -> Result<(), Error> {
         let model_name = config.model_name.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            debug!("Loading conversation model");
+            debug!("Conversation model: Loading");
             let conv = Arc::new(Conv::new(&model_name));
             if conv.add_past("./past.history").is_err() {
                 error!("{} couldn't remember the past.", BOT_NAME);
             }
             (*ready_count).fetch_sub(1, Ordering::Release);
+            debug!("Conversation model: Ready");
 
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
@@ -113,9 +114,11 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            debug!("Loading Classification model");
+            debug!("Classification model: Loading");
             let classy = Classy::new();
             (*ready_count).fetch_sub(1, Ordering::Release);
+            debug!("Classification model: Ready");
+
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     let output = classy.classify(&input);
@@ -131,9 +134,10 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            debug!("Loading sentiment model");
+            debug!("Sentiment model: Loading");
             let senti = Senti::new();
             (*ready_count).fetch_sub(1, Ordering::Release);
+            debug!("Sentiment model: Ready");
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     let output = senti.sentimentice(&input);
@@ -149,9 +153,10 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            debug!("Loading entity model");
+            debug!("Entity model: Loading");
             let enti =  Enti::new();
             (*ready_count).fetch_sub(1, Ordering::Release);
+            debug!("Entity model: Ready");
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
                     let output = enti.entities(&input);

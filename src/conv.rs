@@ -78,9 +78,9 @@ impl Conv {
                     if (*conversation).add_user_input(&line).is_err() {
                         error!("{} failed to remember", BOT_NAME);
                     }
+                    (*conversation).mark_processed();
                 }
             }
-            (*conversation).mark_processed();
             Ok(())
         } else {
             Err(Error::ConversationUnknown)
