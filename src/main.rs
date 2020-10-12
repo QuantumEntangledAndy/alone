@@ -183,11 +183,11 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
+            while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
             debug!("Starting conv");
             while (*keep_running).load(Ordering::Acquire) {
-                while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                }
                 if ! (*keep_running).load(Ordering::Acquire) {
                     break;
                 }
@@ -211,6 +211,9 @@ fn main() -> Result<(), Error> {
                 } else {
                     (*keep_running).store(false, Ordering::Release);
                     break;
+                }
+                while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }
         });
