@@ -10,6 +10,8 @@ use log::*;
 use err_derive::Error;
 use validator::Validate;
 
+#[macro_use(defer_on_unwind)] extern crate scopeguard;
+
 mod conv;
 mod classy;
 mod senti;
@@ -87,6 +89,7 @@ fn main() -> Result<(), Error> {
         let model_name = config.model_name.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
+            defer_on_unwind! { keep_running.store(false, Ordering::Release); }
             debug!("Conversation model: Loading");
             let conv = Arc::new(Conv::new(&model_name));
             if conv.add_past("./past.history").is_err() {
@@ -125,6 +128,7 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
+                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
                 debug!("Classification model: Loading");
                 let classy = Classy::new();
                 (*ready_count).fetch_sub(1, Ordering::Release);
@@ -150,6 +154,7 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
+                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
                 debug!("Sentiment model: Loading");
                 let senti = Senti::new();
                 (*ready_count).fetch_sub(1, Ordering::Release);
@@ -174,6 +179,7 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
+                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
                 debug!("Entity model: Loading");
                 let enti =  Enti::new();
                 (*ready_count).fetch_sub(1, Ordering::Release);
@@ -196,6 +202,7 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
+            defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
             while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
