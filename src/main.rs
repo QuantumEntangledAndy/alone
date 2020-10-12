@@ -46,7 +46,7 @@ const BOT_NAME: &str = "Holly";
 
 fn main() -> Result<(), Error> {
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "alone=debug,cached_path::cache=info");
+        std::env::set_var("RUST_LOG", "alone=debug");
     }
     pretty_env_logger::init();
 
