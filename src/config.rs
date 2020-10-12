@@ -8,6 +8,13 @@ use std::path::PathBuf;
 pub struct Config {
     #[validate(custom = "ensure_model_files") ]
     pub model_name: String,
+
+    #[serde(default = "deault_debug")]
+    pub debug: bool,
+}
+
+fn deault_debug() -> bool {
+    false
 }
 
 fn ensure_model_files(model_name: &str) -> Result<(), ValidationError> {

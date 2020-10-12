@@ -45,19 +45,26 @@ const BOT_NAME: &str = "Holly";
 
 
 fn main() -> Result<(), Error> {
-    if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "alone=debug");
-    }
-    pretty_env_logger::init();
-
     let config: Config = toml::from_str(&std::fs::read_to_string("alone.toml")?)?;
     config.validate()?;
+
+    if config.debug {
+        std::env::set_var("RUST_LOG", "alone=debug");
+    } else if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "alone=info");
+    }
+    pretty_env_logger::init();
 
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
-    const NUM_CHANNELS: usize = 4;
-    let ready_count_arc = Arc::new(AtomicUsize::new(NUM_CHANNELS));
+    let num_channels: usize;
+    if config.debug {
+        num_channels = 4;
+    } else {
+        num_channels = 1;
+    }
+    let ready_count_arc = Arc::new(AtomicUsize::new(num_channels));
 
     let (send_input, get_input) = unbounded::<String>();
 
@@ -113,72 +120,78 @@ fn main() -> Result<(), Error> {
             (*keep_running).store(false, Ordering::Release);
         });
 
-        let input_recv = get_input.clone();
-        let keep_running = keep_running_arc.clone();
-        let ready_count = ready_count_arc.clone();
-        s.spawn(move |_| {
-            debug!("Classification model: Loading");
-            let classy = Classy::new();
-            (*ready_count).fetch_sub(1, Ordering::Release);
-            debug!("Classification model: Ready");
+        if config.debug {
+            let input_recv = get_input.clone();
+            let keep_running = keep_running_arc.clone();
+            let ready_count = ready_count_arc.clone();
+            s.spawn(move |_| {
+                debug!("Classification model: Loading");
+                let classy = Classy::new();
+                (*ready_count).fetch_sub(1, Ordering::Release);
+                debug!("Classification model: Ready");
 
-            while (*keep_running).load(Ordering::Acquire) {
-                if let Ok(input) = input_recv.try_recv() {
-                    let output = classy.classify(&input);
-                    debug!("Classification");
-                    debug!("{:?}", output);
-                    (*ready_count).fetch_sub(1, Ordering::Release);
-                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
+                while (*keep_running).load(Ordering::Acquire) {
+                    if let Ok(input) = input_recv.try_recv() {
+                        let output = classy.classify(&input);
+                        debug!("Classification");
+                        debug!("{:?}", output);
+                        (*ready_count).fetch_sub(1, Ordering::Release);
+                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
                     }
                 }
-            }
-            (*keep_running).store(false, Ordering::Release);
-        });
+                (*keep_running).store(false, Ordering::Release);
+            });
+        }
 
-        let input_recv = get_input.clone();
-        let keep_running = keep_running_arc.clone();
-        let ready_count = ready_count_arc.clone();
-        s.spawn(move |_| {
-            debug!("Sentiment model: Loading");
-            let senti = Senti::new();
-            (*ready_count).fetch_sub(1, Ordering::Release);
-            debug!("Sentiment model: Ready");
-            while (*keep_running).load(Ordering::Acquire) {
-                if let Ok(input) = input_recv.try_recv() {
-                    let output = senti.sentimentice(&input);
-                    debug!("Sentiment");
-                    debug!("{:?}", output);
-                    (*ready_count).fetch_sub(1, Ordering::Release);
-                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
+        if config.debug {
+            let input_recv = get_input.clone();
+            let keep_running = keep_running_arc.clone();
+            let ready_count = ready_count_arc.clone();
+            s.spawn(move |_| {
+                debug!("Sentiment model: Loading");
+                let senti = Senti::new();
+                (*ready_count).fetch_sub(1, Ordering::Release);
+                debug!("Sentiment model: Ready");
+                while (*keep_running).load(Ordering::Acquire) {
+                    if let Ok(input) = input_recv.try_recv() {
+                        let output = senti.sentimentice(&input);
+                        debug!("Sentiment");
+                        debug!("{:?}", output);
+                        (*ready_count).fetch_sub(1, Ordering::Release);
+                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
                     }
                 }
-            }
-            (*keep_running).store(false, Ordering::Release);
-        });
+                (*keep_running).store(false, Ordering::Release);
+            });
+        }
 
-        let input_recv = get_input.clone();
-        let keep_running = keep_running_arc.clone();
-        let ready_count = ready_count_arc.clone();
-        s.spawn(move |_| {
-            debug!("Entity model: Loading");
-            let enti =  Enti::new();
-            (*ready_count).fetch_sub(1, Ordering::Release);
-            debug!("Entity model: Ready");
-            while (*keep_running).load(Ordering::Acquire) {
-                if let Ok(input) = input_recv.try_recv() {
-                    let output = enti.entities(&input);
-                    debug!("Entities");
-                    debug!("{:?}", output);
-                    (*ready_count).fetch_sub(1, Ordering::Release);
-                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
+        if config.debug {
+            let input_recv = get_input.clone();
+            let keep_running = keep_running_arc.clone();
+            let ready_count = ready_count_arc.clone();
+            s.spawn(move |_| {
+                debug!("Entity model: Loading");
+                let enti =  Enti::new();
+                (*ready_count).fetch_sub(1, Ordering::Release);
+                debug!("Entity model: Ready");
+                while (*keep_running).load(Ordering::Acquire) {
+                    if let Ok(input) = input_recv.try_recv() {
+                        let output = enti.entities(&input);
+                        debug!("Entities");
+                        debug!("{:?}", output);
+                        (*ready_count).fetch_sub(1, Ordering::Release);
+                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
                     }
                 }
-            }
-            (*keep_running).store(false, Ordering::Release);
-        });
+                (*keep_running).store(false, Ordering::Release);
+            });
+        }
 
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
@@ -202,8 +215,8 @@ fn main() -> Result<(), Error> {
                     break;
                 }
                 if input.len() > 1 {
-                    (*ready_count).store(NUM_CHANNELS, Ordering::Release);
-                    for _ in 0..NUM_CHANNELS {
+                    (*ready_count).store(num_channels, Ordering::Release);
+                    for _ in 0..num_channels {
                         if send_input.send(input.to_string()).is_err() {
                             error!("You lost your voice")
                         }
