@@ -86,13 +86,14 @@ fn main() -> Result<(), Error> {
 
             while (*keep_running).load(Ordering::Acquire) {
                 debug!("Dialogue");
-                let input = input_recv.recv().expect("We should get data");
-                if let Err(e) = conv.say(&input) {
-                    match e {
-                        Error::UnableToHear => error!("{} couldn't hear you", BOT_NAME),
-                        Error::UnableToSpeak => error!("{} couldn't speak to you", BOT_NAME),
-                        Error::ConversationUnknown => error!("{} doesn't know you", BOT_NAME),
-                        _ => {}
+                if let Ok(input) = input_recv.try_recv() {
+                    if let Err(e) = conv.say(&input) {
+                        match e {
+                            Error::UnableToHear => error!("{} couldn't hear you", BOT_NAME),
+                            Error::UnableToSpeak => error!("{} couldn't speak to you", BOT_NAME),
+                            Error::ConversationUnknown => error!("{} doesn't know you", BOT_NAME),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -112,10 +113,11 @@ fn main() -> Result<(), Error> {
             let classy = Classy::new();
 
             while (*keep_running).load(Ordering::Acquire) {
-                let input = input_recv.recv().expect("We should get data");
-                debug!("Classification");
-                let output = classy.classify(&input);
-                debug!("{:?}", output);
+                if let Ok(input) = input_recv.try_recv() {
+                    debug!("Classification");
+                    let output = classy.classify(&input);
+                    debug!("{:?}", output);
+                }
             }
             (*keep_running).store(false, Ordering::Release);
             (*ready_count).fetch_sub(1, Ordering::Release);
@@ -129,10 +131,11 @@ fn main() -> Result<(), Error> {
             let senti = Senti::new();
 
             while (*keep_running).load(Ordering::Acquire) {
-                let input = input_recv.recv().expect("We should get data");
-                debug!("Sentiment");
-                let output = senti.sentimentice(&input);
-                debug!("{:?}", output);
+                if let Ok(input) = input_recv.try_recv() {
+                    debug!("Sentiment");
+                    let output = senti.sentimentice(&input);
+                    debug!("{:?}", output);
+                }
             }
             (*keep_running).store(false, Ordering::Release);
             (*ready_count).fetch_sub(1, Ordering::Release);
@@ -146,10 +149,11 @@ fn main() -> Result<(), Error> {
             let enti =  Enti::new();
 
             while (*keep_running).load(Ordering::Acquire) {
-                let input = input_recv.recv().expect("We should get data");
-                debug!("Entities");
-                let output = enti.entities(&input);
-                debug!("{:?}", output);
+                if let Ok(input) = input_recv.try_recv() {
+                    debug!("Entities");
+                    let output = enti.entities(&input);
+                    debug!("{:?}", output);
+                }
             }
             (*keep_running).store(false, Ordering::Release);
             (*ready_count).fetch_sub(1, Ordering::Release);
