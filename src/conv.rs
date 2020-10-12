@@ -105,7 +105,6 @@ impl Conv {
                 Ok(my_resp)
             }
         }?;
-        println!("{}: {}", BOT_NAME, output);
         self.past.lock().unwrap().push(input.to_owned());
         if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
             (*convo).mark_processed();

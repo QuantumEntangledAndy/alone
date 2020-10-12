@@ -56,7 +56,9 @@ fn main() -> Result<(), Error> {
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
-    let ready_count_arc = Arc::new(AtomicUsize::new(4));
+    const WAIT_FOR: usize = 4;
+    let ready_count_arc = Arc::new(AtomicUsize::new(WAIT_FOR));
+
     let (send_input, get_input) = unbounded::<String>();
 
     debug!("Setting up stop signals");
@@ -87,15 +89,17 @@ fn main() -> Result<(), Error> {
 
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
-                    debug!("Dialogue");
-                    if let Err(e) = conv.say(&input) {
-                        match e {
-                            Error::UnableToHear => error!("{} couldn't hear you", BOT_NAME),
-                            Error::UnableToSpeak => error!("{} couldn't speak to you", BOT_NAME),
-                            Error::ConversationUnknown => error!("{} doesn't know you", BOT_NAME),
-                            _ => {}
+                    match conv.say(&input) {
+                        Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
+                        Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
+                        Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
+                        Err(_) => {}
+                        Ok(output) => {
+                            debug!("Dialogue");
+                            println!("{}: {}", BOT_NAME, output);
                         }
                     }
+                    (*ready_count).fetch_sub(1, Ordering::Release);
                 }
             }
             info!("Leaving town");
@@ -114,9 +118,10 @@ fn main() -> Result<(), Error> {
             (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
-                    debug!("Classification");
                     let output = classy.classify(&input);
+                    debug!("Classification");
                     debug!("{:?}", output);
+                    (*ready_count).fetch_sub(1, Ordering::Release);
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -131,9 +136,10 @@ fn main() -> Result<(), Error> {
             (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
-                    debug!("Sentiment");
                     let output = senti.sentimentice(&input);
+                    debug!("Sentiment");
                     debug!("{:?}", output);
+                    (*ready_count).fetch_sub(1, Ordering::Release);
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -148,9 +154,10 @@ fn main() -> Result<(), Error> {
             (*ready_count).fetch_sub(1, Ordering::Release);
             while (*keep_running).load(Ordering::Acquire) {
                 if let Ok(input) = input_recv.try_recv() {
-                    debug!("Entities");
                     let output = enti.entities(&input);
+                    debug!("Entities");
                     debug!("{:?}", output);
+                    (*ready_count).fetch_sub(1, Ordering::Release);
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -159,30 +166,32 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-            if (*keep_running).load(Ordering::Acquire) {
-                debug!("Starting conv");
-                while (*keep_running).load(Ordering::Acquire) {
-                    print!("You: ");
-                    let mut input = String::new();
-                    io::stdout().flush().expect("Could not flush stdout");
-                    if io::stdin().read_line(&mut input).is_err() {
-                        error!("You lost your voice");
-                        continue;
+            debug!("Starting conv");
+            while (*keep_running).load(Ordering::Acquire) {
+                while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                if ! (*keep_running).load(Ordering::Acquire) {
+                    break;
+                }
+                print!("You: ");
+                let mut input = String::new();
+                io::stdout().flush().expect("Could not flush stdout");
+                if io::stdin().read_line(&mut input).is_err() {
+                    error!("You lost your voice");
+                    continue;
+                }
+                if ! (*keep_running).load(Ordering::Acquire) {
+                    break;
+                }
+                if input.len() > 1 {
+                    if send_input.send(input.to_string()).is_err() {
+                        error!("You lost your voice")
                     }
-                    if ! (*keep_running).load(Ordering::Acquire) {
-                        break;
-                    }
-                    if input.len() > 1 {
-                        if send_input.send(input.to_string()).is_err() {
-                            error!("You lost your voice")
-                        }
-                    } else {
-                        (*keep_running).store(false, Ordering::Release);
-                        break;
-                    }
+                    (*ready_count).store(WAIT_FOR, Ordering::Release);
+                } else {
+                    (*keep_running).store(false, Ordering::Release);
+                    break;
                 }
             }
         });
