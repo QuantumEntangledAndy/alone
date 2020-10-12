@@ -85,8 +85,8 @@ fn main() -> Result<(), Error> {
             }
 
             while (*keep_running).load(Ordering::Acquire) {
-                debug!("Dialogue");
                 if let Ok(input) = input_recv.try_recv() {
+                    debug!("Dialogue");
                     if let Err(e) = conv.say(&input) {
                         match e {
                             Error::UnableToHear => error!("{} couldn't hear you", BOT_NAME),
