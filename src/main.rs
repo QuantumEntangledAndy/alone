@@ -56,8 +56,8 @@ fn main() -> Result<(), Error> {
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
-    const WAIT_FOR: usize = 4;
-    let ready_count_arc = Arc::new(AtomicUsize::new(WAIT_FOR));
+    const NUM_CHANNELS: usize = 4;
+    let ready_count_arc = Arc::new(AtomicUsize::new(NUM_CHANNELS));
 
     let (send_input, get_input) = unbounded::<String>();
 
@@ -101,6 +101,9 @@ fn main() -> Result<(), Error> {
                         }
                     }
                     (*ready_count).fetch_sub(1, Ordering::Release);
+                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
                 }
             }
             info!("Leaving town");
@@ -125,6 +128,9 @@ fn main() -> Result<(), Error> {
                     debug!("Classification");
                     debug!("{:?}", output);
                     (*ready_count).fetch_sub(1, Ordering::Release);
+                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -144,6 +150,9 @@ fn main() -> Result<(), Error> {
                     debug!("Sentiment");
                     debug!("{:?}", output);
                     (*ready_count).fetch_sub(1, Ordering::Release);
+                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -163,6 +172,9 @@ fn main() -> Result<(), Error> {
                     debug!("Entities");
                     debug!("{:?}", output);
                     (*ready_count).fetch_sub(1, Ordering::Release);
+                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
                 }
             }
             (*keep_running).store(false, Ordering::Release);
@@ -190,10 +202,12 @@ fn main() -> Result<(), Error> {
                     break;
                 }
                 if input.len() > 1 {
-                    if send_input.send(input.to_string()).is_err() {
-                        error!("You lost your voice")
+                    (*ready_count).store(NUM_CHANNELS, Ordering::Release);
+                    for _ in 0..NUM_CHANNELS {
+                        if send_input.send(input.to_string()).is_err() {
+                            error!("You lost your voice")
+                        }
                     }
-                    (*ready_count).store(WAIT_FOR, Ordering::Release);
                 } else {
                     (*keep_running).store(false, Ordering::Release);
                     break;
