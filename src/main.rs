@@ -77,7 +77,7 @@ fn main() -> Result<(), Error> {
         if signal_count > 0 {
             std::process::exit(1);
         } else {
-            (*keep_running_signal).store(false, Ordering::Release);
+            (*keep_running_signal).store(false, Ordering::Relaxed);
             signal_count += 1;
         }
     })
@@ -89,16 +89,16 @@ fn main() -> Result<(), Error> {
         let model_name = config.model_name.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            defer_on_unwind! { keep_running.store(false, Ordering::Release); }
+            defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
             debug!("Conversation model: Loading");
             let conv = Arc::new(Conv::new(&model_name));
             if conv.add_past("./past.history").is_err() {
                 error!("{} couldn't remember the past.", BOT_NAME);
             }
-            (*ready_count).fetch_sub(1, Ordering::Release);
+            (*ready_count).fetch_sub(1, Ordering::Relaxed);
             debug!("Conversation model: Ready");
 
-            while (*keep_running).load(Ordering::Acquire) {
+            while (*keep_running).load(Ordering::Relaxed) {
                 if let Ok(input) = input_recv.try_recv() {
                     match conv.say(&input) {
                         Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
@@ -110,8 +110,8 @@ fn main() -> Result<(), Error> {
                             println!("{}: {}", BOT_NAME, output);
                         }
                     }
-                    (*ready_count).fetch_sub(1, Ordering::Release);
-                    while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
                 }
@@ -120,7 +120,7 @@ fn main() -> Result<(), Error> {
             if conv.save_past("./past.history").is_err() {
                 error!("{} failed to remember todays session.", BOT_NAME);
             }
-            (*keep_running).store(false, Ordering::Release);
+            (*keep_running).store(false, Ordering::Relaxed);
         });
 
         if config.debug {
@@ -128,24 +128,24 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
+                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
                 debug!("Classification model: Loading");
                 let classy = Classy::new();
-                (*ready_count).fetch_sub(1, Ordering::Release);
+                (*ready_count).fetch_sub(1, Ordering::Relaxed);
                 debug!("Classification model: Ready");
 
-                while (*keep_running).load(Ordering::Acquire) {
+                while (*keep_running).load(Ordering::Relaxed) {
                     if let Ok(input) = input_recv.try_recv() {
                         let output = classy.classify(&input);
                         debug!("Classification");
                         debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Release);
-                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                             std::thread::sleep(std::time::Duration::from_millis(500));
                         }
                     }
                 }
-                (*keep_running).store(false, Ordering::Release);
+                (*keep_running).store(false, Ordering::Relaxed);
             });
         }
 
@@ -154,23 +154,23 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
+                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
                 debug!("Sentiment model: Loading");
                 let senti = Senti::new();
-                (*ready_count).fetch_sub(1, Ordering::Release);
+                (*ready_count).fetch_sub(1, Ordering::Relaxed);
                 debug!("Sentiment model: Ready");
-                while (*keep_running).load(Ordering::Acquire) {
+                while (*keep_running).load(Ordering::Relaxed) {
                     if let Ok(input) = input_recv.try_recv() {
                         let output = senti.sentimentice(&input);
                         debug!("Sentiment");
                         debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Release);
-                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                             std::thread::sleep(std::time::Duration::from_millis(500));
                         }
                     }
                 }
-                (*keep_running).store(false, Ordering::Release);
+                (*keep_running).store(false, Ordering::Relaxed);
             });
         }
 
@@ -179,60 +179,68 @@ fn main() -> Result<(), Error> {
             let keep_running = keep_running_arc.clone();
             let ready_count = ready_count_arc.clone();
             s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
+                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
                 debug!("Entity model: Loading");
                 let enti =  Enti::new();
-                (*ready_count).fetch_sub(1, Ordering::Release);
+                (*ready_count).fetch_sub(1, Ordering::Relaxed);
                 debug!("Entity model: Ready");
-                while (*keep_running).load(Ordering::Acquire) {
+                while (*keep_running).load(Ordering::Relaxed) {
                     if let Ok(input) = input_recv.try_recv() {
                         let output = enti.entities(&input);
                         debug!("Entities");
                         debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Release);
-                        while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                             std::thread::sleep(std::time::Duration::from_millis(500));
                         }
                     }
                 }
-                (*keep_running).store(false, Ordering::Release);
+                (*keep_running).store(false, Ordering::Relaxed);
             });
         }
 
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            defer_on_unwind!{ keep_running.store(false, Ordering::Release); }
-            while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+            defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
+            while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
             debug!("Starting conv");
-            while (*keep_running).load(Ordering::Acquire) {
-                if ! (*keep_running).load(Ordering::Acquire) {
+            while (*keep_running).load(Ordering::Relaxed) {
+                if ! (*keep_running).load(Ordering::Relaxed) {
                     break;
                 }
                 print!("You: ");
                 let mut input = String::new();
                 io::stdout().flush().expect("Could not flush stdout");
-                if io::stdin().read_line(&mut input).is_err() {
-                    error!("You lost your voice");
-                    continue;
+                let stdin = io::stdin();
+                let mut write_stdin = stdin.lock();
+                'outer: while (*keep_running).load(Ordering::Relaxed) {
+                    let buffer = write_stdin.fill_buf().unwrap();
+                    for (i, byte) in buffer.iter().enumerate() {
+                        if byte == &(0x0A as u8) {
+                            input = String::from_utf8_lossy(&buffer[0..i]).into_owned();
+                            write_stdin.consume(i+1);
+                            break 'outer;
+                        }
+                    }
                 }
-                if ! (*keep_running).load(Ordering::Acquire) {
+                if ! (*keep_running).load(Ordering::Relaxed) {
                     break;
                 }
                 if input.len() > 1 {
-                    (*ready_count).store(num_channels, Ordering::Release);
+                    (*ready_count).store(num_channels, Ordering::Relaxed);
                     for _ in 0..num_channels {
                         if send_input.send(input.to_string()).is_err() {
                             error!("You lost your voice")
                         }
                     }
                 } else {
-                    (*keep_running).store(false, Ordering::Release);
+                    (*keep_running).store(false, Ordering::Relaxed);
                     break;
                 }
-                while (*ready_count).load(Ordering::Acquire) > 0 && (*keep_running).load(Ordering::Acquire)  {
+                while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }

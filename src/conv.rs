@@ -65,12 +65,16 @@ impl Conv {
             "".to_string()
         });
 
+        trace!("Locking past: add_past");
         let mut user_past = self.past.lock().unwrap();
+        trace!("Locked past: add_past");
         user_past.append(
             &mut user_past_str.lines().map(|i| i.to_string()).filter(|x| !x.is_empty()).collect::<Vec<String>>()
         );
 
+        trace!("Locking manager: add_past");
         let mut conversation_manager = self.manager.lock().unwrap();
+        trace!("Locked manager: add_past");
         if let Some(conversation) = conversation_manager.get(&self.uuid).as_mut() {
             for line in &(*user_past) {
                 #[allow(clippy::collapsible_if)]
@@ -88,7 +92,10 @@ impl Conv {
     }
 
     pub fn say(&self, input: &str) -> Result<String, Error> {
+        trace!("  Conv recieved: {}", input);
+        trace!("Locking manager: say");
         let mut conversation_manager = self.manager.lock().unwrap();
+        trace!("Locked manager: say");
         if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
             if convo.add_user_input(&input).is_err() {
                 return Err(Error::UnableToSpeak);
@@ -97,25 +104,28 @@ impl Conv {
             return Err(Error::ConversationUnknown);
         }
         let output = {
+            trace!("  Generating responses");
             let resp = self.model.generate_responses(&mut conversation_manager);
-            let my_resp = resp.get(&self.uuid).unwrap_or_else(|| &"").to_string();
-            if my_resp.is_empty() {
-                Err(Error::UnableToSpeak)
+            trace!("  Got responses");
+            if let Some(my_resp) = resp.get(&self.uuid) {
+                Ok(my_resp.to_string())
             } else {
-                Ok(my_resp)
+                Err(Error::UnableToSpeak)
             }
         }?;
+        trace!("Locking past: say");
         self.past.lock().unwrap().push(input.to_owned());
-        if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
-            (*convo).mark_processed();
-        }
+        trace!("Locking past: say");
         Ok(output)
     }
 
     pub fn save_past(&self, file_path: &str) -> Result<(), Error> {
+        trace!("Locking past: save_past");
         if std::fs::write(&file_path, self.past.lock().unwrap().iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<String>>().join("\n").as_bytes()).is_err() {
+            trace!("Locked past: save_past");
             Err(Error::UnableToWriteJournel)
         } else {
+            trace!("Locked past: save_past");
             Ok(())
         }
     }
