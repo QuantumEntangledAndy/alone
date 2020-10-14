@@ -88,10 +88,11 @@ fn main() -> Result<(), Error> {
         let keep_running = keep_running_arc.clone();
         let model_name = config.model_name.clone();
         let ready_count = ready_count_arc.clone();
+        let max_context = config.max_context;
         s.spawn(move |_| {
             defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
             debug!("Conversation model: Loading");
-            let conv = Arc::new(Conv::new(&model_name));
+            let conv = Arc::new(Conv::new(&model_name, max_context));
             if conv.add_past("./past.history").is_err() {
                 error!("{} couldn't remember the past.", BOT_NAME);
             }
