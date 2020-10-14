@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 """
 Simple trainer for DialoGPT.
 
@@ -38,21 +37,6 @@ from torch.utils.data import (
 )
 from torch.utils.data.distributed import DistributedSampler
 
-import pip
-
-
-def install(package):
-    """Installs a pip package."""
-    if hasattr(pip, "main"):
-        pip.main(["install", package])
-    else:
-        pip._internal.main(["install", package])
-
-
-if "transformers" not in sys.modules:
-    install("transformers")
-
-
 from transformers import (  # noqa
     MODEL_WITH_LM_HEAD_MAPPING,
     WEIGHTS_NAME,
@@ -89,10 +73,6 @@ if in_ipython_kernel:
 else:
     from tqdm import tqdm, trange
 
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-medium")
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-medium")
-
-
 # Configs
 logger = logging.getLogger(__name__)
 
@@ -111,9 +91,9 @@ class Args:
         """Init it."""
         self.output_dir = "output-small"
         self.model_type = "gpt2"
-        self.model_name_or_path = "microsoft/DialoGPT-small"
-        self.config_name = "microsoft/DialoGPT-small"
-        self.tokenizer_name = "microsoft/DialoGPT-small"
+        self.model_name_or_path = "microsoft/DialoGPT-medium"
+        self.config_name = "microsoft/DialoGPT-medium"
+        self.tokenizer_name = "microsoft/DialoGPT-medium"
         self.cache_dir = "cached"
         self.block_size = 512
         self.do_train = True
@@ -126,7 +106,7 @@ class Args:
         self.weight_decay = 0.0
         self.adam_epsilon = 1e-8
         self.max_grad_norm = 1.0
-        self.num_train_epochs = 3
+        self.num_train_epochs = 5
         self.max_steps = -1
         self.warmup_steps = 0
         self.logging_steps = 1000
@@ -137,7 +117,7 @@ class Args:
         self.overwrite_output_dir = True
         self.overwrite_cache = True
         self.should_continue = False
-        self.seed = 42
+        self.seed = 951
         self.local_rank = -1
         self.fp16 = False
         self.fp16_opt_level = "O1"
@@ -286,10 +266,10 @@ def train(
     )
 
     def collate(examples: List[torch.Tensor]):
-        if tokenizer._pad_token is None:
+        if tokenizer._eos_token is None:
             return pad_sequence(examples, batch_first=True)
         return pad_sequence(
-            examples, batch_first=True, padding_value=tokenizer.pad_token_id
+            examples, batch_first=True, padding_value=tokenizer.eos_token_id
         )
 
     train_sampler = (
@@ -612,10 +592,10 @@ def evaluate(
     # Note that DistributedSampler samples randomly
 
     def collate(examples: List[torch.Tensor]):
-        if tokenizer._pad_token is None:
+        if tokenizer._eos_token is None:
             return pad_sequence(examples, batch_first=True)
         return pad_sequence(
-            examples, batch_first=True, padding_value=tokenizer.pad_token_id
+            examples, batch_first=True, padding_value=tokenizer.eos_token_id
         )
 
     eval_sampler = SequentialSampler(eval_dataset)
@@ -671,7 +651,7 @@ def main_train(df_trn, df_val, **kwargs):
     """Do the training."""
     args = Args()
     for kwarg in kwargs:
-        setattr(kwarg, args, kwargs[kwarg])
+        setattr(args, kwarg, kwargs[kwarg])
 
     if args.should_continue:
         sorted_checkpoints = _sorted_checkpoints(args)
