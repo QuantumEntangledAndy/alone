@@ -1,8 +1,12 @@
+use crossbeam_channel::Receiver;
 use crate::classy::Classy;
 use crate::config::{WordImagesConfig, WordImageData};
 
+use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
 use std::collections::HashSet;
+
 use rand::seq::SliceRandom;
+use validator::Validate;
 
 use log::*;
 
@@ -47,4 +51,39 @@ impl WordImage {
             }
         }
     }
+}
+
+
+pub fn start_wordimages(keep_running: Arc<AtomicBool>, ready_count: Arc<AtomicUsize>, config_path: &str, input_recv: Receiver<String>) {
+    defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
+    debug!("Wordimages: Loading");
+    if let Ok(config_str) = std::fs::read_to_string(config_path) {
+        if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
+            if word_config.validate().is_ok() {
+                let wordy = WordImage::new(&word_config);
+                (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                debug!("Wordimages: Ready");
+
+                while (*keep_running).load(Ordering::Relaxed) {
+                    if let Ok(input) = input_recv.try_recv() {
+                        wordy.show_images(&input);
+                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                        }
+                    }
+                }
+            } else {
+                (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                debug!("Wordimages: Error not valid WordImagesConfig");
+            }
+        } else {
+            (*ready_count).fetch_sub(1, Ordering::Relaxed);
+            debug!("Wordimages: Error not valid toml");
+        }
+    } else {
+        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+        debug!("Wordimages: Error valid file");
+    }
+    (*keep_running).store(false, Ordering::Relaxed);
 }

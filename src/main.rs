@@ -1,4 +1,4 @@
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Sender};
 use crossbeam::scope;
 
 use std::io;
@@ -19,12 +19,9 @@ mod enti;
 mod config;
 mod wordimage;
 
-use self::conv::Conv;
-use self::classy::Classy;
-use self::senti::Senti;
-use self::enti::Enti;
-use self::config::{Config, WordImagesConfig};
-use self::wordimage::WordImage;
+use self::conv::{start_conv};
+use self::config::{Config};
+use self::wordimage::{start_wordimages};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -64,10 +61,6 @@ fn main() -> Result<(), Error> {
     let keep_running_arc = Arc::new(AtomicBool::new(true));
     let mut num_channels: usize = 1;
 
-    if config.debug {
-        num_channels += 3;
-    }
-
     if config.word_images.is_some() {
         num_channels += 1;
     }
@@ -96,203 +89,70 @@ fn main() -> Result<(), Error> {
         let ready_count = ready_count_arc.clone();
         let max_context = config.max_context;
         s.spawn(move |_| {
-            defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
-            debug!("Conversation model: Loading");
-            let conv = Arc::new(Conv::new(&model_name, max_context));
-            if conv.add_past("./past.history").is_err() {
-                error!("{} couldn't remember the past.", BOT_NAME);
-            }
-            (*ready_count).fetch_sub(1, Ordering::Relaxed);
-            debug!("Conversation model: Ready");
-
-            while (*keep_running).load(Ordering::Relaxed) {
-                if let Ok(input) = input_recv.try_recv() {
-                    match conv.say(&input) {
-                        Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
-                        Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
-                        Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
-                        Err(_) => {}
-                        Ok(output) => {
-                            debug!("Dialogue");
-                            println!("{}: {}", BOT_NAME, output);
-                        }
-                    }
-                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                        std::thread::sleep(std::time::Duration::from_millis(500));
-                    }
-                }
-            }
-            info!("Leaving town");
-            if conv.save_past("./past.history").is_err() {
-                error!("{} failed to remember todays session.", BOT_NAME);
-            }
-            (*keep_running).store(false, Ordering::Relaxed);
+            start_conv(keep_running, &model_name, max_context, ready_count, input_recv);
         });
 
         let input_recv = get_input.clone();
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
-        if config.word_images.is_some() {
+        if let Some(word_images) = config.word_images {
             s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-                debug!("Wordimages: Loading");
-                if let Ok(config_str) = std::fs::read_to_string("wordimages.toml") {
-                    if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
-                        if word_config.validate().is_ok() {
-                            let wordy = WordImage::new(&word_config);
-                            (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                            debug!("Wordimages: Ready");
-
-                            while (*keep_running).load(Ordering::Relaxed) {
-                                if let Ok(input) = input_recv.try_recv() {
-                                    wordy.show_images(&input);
-                                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                                    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                                        std::thread::sleep(std::time::Duration::from_millis(500));
-                                    }
-                                }
-                            }
-                        } else {
-                            (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                            debug!("Wordimages: Error not valid WordImagesConfig");
-                        }
-                    } else {
-                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                        debug!("Wordimages: Error not valid toml");
-                    }
-                } else {
-                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                    debug!("Wordimages: Error valid file");
-                }
-                (*keep_running).store(false, Ordering::Relaxed);
-            });
-        }
-
-        if config.debug {
-            let input_recv = get_input.clone();
-            let keep_running = keep_running_arc.clone();
-            let ready_count = ready_count_arc.clone();
-            s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-                debug!("Classification model: Loading");
-                let classy = Classy::new();
-                (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                debug!("Classification model: Ready");
-
-                while (*keep_running).load(Ordering::Relaxed) {
-                    if let Ok(input) = input_recv.try_recv() {
-                        let output = classy.classify(&input);
-                        debug!("Classification");
-                        debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    }
-                }
-                (*keep_running).store(false, Ordering::Relaxed);
-            });
-        }
-
-        if config.debug {
-            let input_recv = get_input.clone();
-            let keep_running = keep_running_arc.clone();
-            let ready_count = ready_count_arc.clone();
-            s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-                debug!("Sentiment model: Loading");
-                let senti = Senti::new();
-                (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                debug!("Sentiment model: Ready");
-                while (*keep_running).load(Ordering::Relaxed) {
-                    if let Ok(input) = input_recv.try_recv() {
-                        let output = senti.sentimentice(&input);
-                        debug!("Sentiment");
-                        debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    }
-                }
-                (*keep_running).store(false, Ordering::Relaxed);
-            });
-        }
-
-        if config.debug {
-            let input_recv = get_input.clone();
-            let keep_running = keep_running_arc.clone();
-            let ready_count = ready_count_arc.clone();
-            s.spawn(move |_| {
-                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-                debug!("Entity model: Loading");
-                let enti =  Enti::new();
-                (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                debug!("Entity model: Ready");
-                while (*keep_running).load(Ordering::Relaxed) {
-                    if let Ok(input) = input_recv.try_recv() {
-                        let output = enti.entities(&input);
-                        debug!("Entities");
-                        debug!("{:?}", output);
-                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
-                        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                    }
-                }
-                (*keep_running).store(false, Ordering::Relaxed);
+                start_wordimages(keep_running, ready_count, &word_images, input_recv);
             });
         }
 
         let keep_running = keep_running_arc.clone();
         let ready_count = ready_count_arc.clone();
         s.spawn(move |_| {
-            defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-            while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-            debug!("Starting conv");
-            while (*keep_running).load(Ordering::Relaxed) {
-                if ! (*keep_running).load(Ordering::Relaxed) {
-                    break;
-                }
-                print!("You: ");
-                let mut input = String::new();
-                io::stdout().flush().expect("Could not flush stdout");
-                let stdin = io::stdin();
-                let mut write_stdin = stdin.lock();
-                'outer: while (*keep_running).load(Ordering::Relaxed) {
-                    let buffer = write_stdin.fill_buf().unwrap();
-                    for (i, byte) in buffer.iter().enumerate() {
-                        if byte == &(0x0A as u8) {
-                            input = String::from_utf8_lossy(&buffer[0..i]).into_owned();
-                            write_stdin.consume(i+1);
-                            break 'outer;
-                        }
-                    }
-                }
-                if ! (*keep_running).load(Ordering::Relaxed) {
-                    break;
-                }
-                if input.len() > 1 {
-                    (*ready_count).store(num_channels, Ordering::Relaxed);
-                    for _ in 0..num_channels {
-                        if send_input.send(input.to_string()).is_err() {
-                            error!("You lost your voice")
-                        }
-                    }
-                } else {
-                    (*keep_running).store(false, Ordering::Relaxed);
-                    break;
-                }
-                while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
-                    std::thread::sleep(std::time::Duration::from_millis(500));
-                }
-            }
+            console_input(keep_running, ready_count, num_channels, send_input);
         });
     }).unwrap();
 
     Ok(())
 
+}
+
+fn console_input(keep_running: Arc<AtomicBool>, ready_count: Arc<AtomicUsize>, num_channels: usize, send_input: Sender<String>) {
+    defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
+    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    debug!("Starting conv");
+    while (*keep_running).load(Ordering::Relaxed) {
+        if ! (*keep_running).load(Ordering::Relaxed) {
+            break;
+        }
+        print!("You: ");
+        let mut input = String::new();
+        io::stdout().flush().expect("Could not flush stdout");
+        let stdin = io::stdin();
+        let mut write_stdin = stdin.lock();
+        'outer: while (*keep_running).load(Ordering::Relaxed) {
+            let buffer = write_stdin.fill_buf().unwrap();
+            for (i, byte) in buffer.iter().enumerate() {
+                if byte == &(0x0A as u8) {
+                    input = String::from_utf8_lossy(&buffer[0..i]).into_owned();
+                    write_stdin.consume(i+1);
+                    break 'outer;
+                }
+            }
+        }
+        if ! (*keep_running).load(Ordering::Relaxed) {
+            break;
+        }
+        if input.len() > 1 {
+            (*ready_count).store(num_channels, Ordering::Relaxed);
+            for _ in 0..num_channels {
+                if send_input.send(input.to_string()).is_err() {
+                    error!("You lost your voice")
+                }
+            }
+        } else {
+            (*keep_running).store(false, Ordering::Relaxed);
+            break;
+        }
+        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
 }

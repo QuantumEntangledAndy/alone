@@ -1,3 +1,4 @@
+use crossbeam_channel::Receiver;
 use rust_bert::pipelines::conversation::{ConversationModel, ConversationManager, Conversation, ConversationConfig};
 use rust_bert::resources::{LocalResource, Resource};
 use tch::{Device};
@@ -6,7 +7,7 @@ use uuid::Uuid;
 use std::fs;
 use std::path::{PathBuf};
 
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
 
 use log::*;
 
@@ -141,4 +142,40 @@ impl Conv {
             Ok(())
         }
     }
+}
+
+
+pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: usize, ready_count: Arc<AtomicUsize>, input_recv: Receiver<String>) {
+    defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
+    debug!("Conversation model: Loading");
+    let conv = Arc::new(Conv::new(&model_name, max_context));
+    if conv.add_past("./past.history").is_err() {
+        error!("{} couldn't remember the past.", BOT_NAME);
+    }
+    (*ready_count).fetch_sub(1, Ordering::Relaxed);
+    debug!("Conversation model: Ready");
+
+    while (*keep_running).load(Ordering::Relaxed) {
+        if let Ok(input) = input_recv.try_recv() {
+            match conv.say(&input) {
+                Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
+                Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
+                Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
+                Err(_) => {}
+                Ok(output) => {
+                    debug!("Dialogue");
+                    println!("{}: {}", BOT_NAME, output);
+                }
+            }
+            (*ready_count).fetch_sub(1, Ordering::Relaxed);
+            while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+        }
+    }
+    info!("Leaving town");
+    if conv.save_past("./past.history").is_err() {
+        error!("{} failed to remember todays session.", BOT_NAME);
+    }
+    (*keep_running).store(false, Ordering::Relaxed);
 }

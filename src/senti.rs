@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use rust_bert::pipelines::sentiment::{SentimentModel, Sentiment};
 
 pub struct Senti {

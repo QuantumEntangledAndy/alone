@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use rust_bert::pipelines::ner::{NERModel, Entity};
 
 pub struct Enti {

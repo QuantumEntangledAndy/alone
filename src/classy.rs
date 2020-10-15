@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use rust_bert::pipelines::zero_shot_classification::ZeroShotClassificationModel;
 use rust_bert::pipelines::sequence_classification::Label;
 
