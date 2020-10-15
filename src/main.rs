@@ -17,12 +17,14 @@ mod classy;
 mod senti;
 mod enti;
 mod config;
+mod wordimage;
 
 use self::conv::Conv;
 use self::classy::Classy;
 use self::senti::Senti;
 use self::enti::Enti;
-use self::config::Config;
+use self::config::{Config, WordImagesConfig};
+use self::wordimage::WordImage;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -60,12 +62,16 @@ fn main() -> Result<(), Error> {
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
-    let num_channels: usize;
+    let mut num_channels: usize = 1;
+
     if config.debug {
-        num_channels = 4;
-    } else {
-        num_channels = 1;
+        num_channels += 3;
     }
+
+    if config.word_images.is_some() {
+        num_channels += 1;
+    }
+
     let ready_count_arc = Arc::new(AtomicUsize::new(num_channels));
 
     let (send_input, get_input) = unbounded::<String>();
@@ -123,6 +129,45 @@ fn main() -> Result<(), Error> {
             }
             (*keep_running).store(false, Ordering::Relaxed);
         });
+
+        let input_recv = get_input.clone();
+        let keep_running = keep_running_arc.clone();
+        let ready_count = ready_count_arc.clone();
+        if config.word_images.is_some() {
+            s.spawn(move |_| {
+                defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
+                debug!("Wordimages: Loading");
+                if let Ok(config_str) = std::fs::read_to_string("wordimages.toml") {
+                    if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
+                        if word_config.validate().is_ok() {
+                            let wordy = WordImage::new(&word_config);
+                            (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                            debug!("Wordimages: Ready");
+
+                            while (*keep_running).load(Ordering::Relaxed) {
+                                if let Ok(input) = input_recv.try_recv() {
+                                    wordy.show_images(&input);
+                                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                                    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+                                        std::thread::sleep(std::time::Duration::from_millis(500));
+                                    }
+                                }
+                            }
+                        } else {
+                            (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                            debug!("Wordimages: Error not valid WordImagesConfig");
+                        }
+                    } else {
+                        (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                        debug!("Wordimages: Error not valid toml");
+                    }
+                } else {
+                    (*ready_count).fetch_sub(1, Ordering::Relaxed);
+                    debug!("Wordimages: Error valid file");
+                }
+                (*keep_running).store(false, Ordering::Relaxed);
+            });
+        }
 
         if config.debug {
             let input_recv = get_input.clone();

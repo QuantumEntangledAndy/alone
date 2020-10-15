@@ -26,6 +26,8 @@ import pandas as pd
 import numpy as np
 import torch
 
+from tqdm import tqdm, trange
+
 from sklearn.model_selection import train_test_split
 
 from torch.nn.utils.rnn import pad_sequence
@@ -67,11 +69,6 @@ if "IPython" in sys.modules:
 
 if in_ipython:
     in_ipython_kernel = getattr(ip, "kernel", None) is not None
-
-if in_ipython_kernel:
-    from tqdm.notebook import tqdm, trange
-else:
-    from tqdm import tqdm, trange
 
 # Configs
 logger = logging.getLogger(__name__)

@@ -5,3 +5,6 @@ Cargo.lock
 train/*/
 .DS_Store
 alone.toml
+wordimages.toml
+wordimages
+wordimages/**

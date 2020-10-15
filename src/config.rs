@@ -14,6 +14,10 @@ pub struct Config {
 
     #[serde(default = "deault_debug")]
     pub debug: bool,
+
+    #[serde(default)]
+    #[validate(custom = "ensure_word_images")]
+    pub word_images: Option<String>,
 }
 
 fn deault_debug() -> bool {
@@ -22,6 +26,14 @@ fn deault_debug() -> bool {
 
 fn default_max_context() -> usize {
     0
+}
+
+fn ensure_word_images(word_images: &str) -> Result<(), ValidationError> {
+    if ! PathBuf::from(&word_images).exists() {
+        Ok(())
+    } else {
+        Err(ValidationError::new("Word image config file missind"))
+    }
 }
 
 fn ensure_model_files(model_name: &str) -> Result<(), ValidationError> {
@@ -42,4 +54,19 @@ fn ensure_model_files(model_name: &str) -> Result<(), ValidationError> {
     } else {
         Ok(())
     }
+}
+
+#[derive(Debug, Deserialize, Validate, Clone)]
+pub struct WordImagesConfig {
+    #[serde(default)]
+    #[validate]
+    pub word_images: Vec<WordImageData>,
+}
+
+#[derive(Debug, Deserialize, Validate, Clone)]
+pub struct WordImageData {
+    pub path: PathBuf,
+
+    #[validate(length(min = 1))]
+    pub words: Vec<String>,
 }

@@ -23,4 +23,13 @@ impl Classy {
             128,
         ).pop()
     }
+
+    pub fn classify_with_lables(&self, input: &str, candidate_labels: &[&str]) -> Option<Vec<Label>> {
+        self.model.predict_multilabel(
+            &[&input],
+            candidate_labels,
+            None,
+            128,
+        ).pop()
+    }
 }

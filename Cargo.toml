@@ -3,15 +3,19 @@ name = "alone"
 version = "0.1.0"
 authors = ["QuantumEntangledAndy <sheepchaan@gmail.com>"]
 edition = "2018"
+default-run = "alone"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "*"
+rand = "*"
 ctrlc = "*"
 log =  "*"
 err-derive = "*"
 pretty_env_logger = "*"
-rust-bert = "*"
+# rust-bert = { git = "https://github.com/guillaume-be/rust-bert", branch = "fix_greedy_generation" }
+rust-bert = { path = "/Users/awk21/Projects/Software/rust-bert", version="*" }
 tch = "*"
 toml = "*"
 uuid = { version = "*", features = ["v4"] }
@@ -21,3 +25,11 @@ crossbeam-channel = "*"
 validator = "*"
 validator_derive = "*"
 scopeguard = "*"
+
+[[bin]]
+name = "alone"
+path = "src/main.rs"
+
+[[bin]]
+name = "example"
+path = "example-test.rs"
