@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use std::fs;
 use std::path::{PathBuf};
-use std::sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Mutex, Arc};
 
 use bus::BusReader;
 
@@ -14,6 +14,7 @@ use log::*;
 use crate::BOT_NAME;
 use crate::Error;
 use crate::ready::Ready;
+use crate::status::Status;
 
 pub struct Conv {
     model: ConversationModel,
@@ -146,8 +147,8 @@ impl Conv {
 }
 
 
-pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: usize, ready_count: &Ready, mut input_recv: BusReader<String>) {
-    defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
+pub fn start_conv(status: &Status, model_name: &str, max_context: usize, ready_count: &Ready, mut input_recv: BusReader<String>) {
+    defer_on_unwind! { status.stop() }
     debug!("Conversation model: Loading");
     let conv = Arc::new(Conv::new(&model_name, max_context));
     if conv.add_past("./past.history").is_err() {
@@ -156,7 +157,7 @@ pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: 
     ready_count.not_ready("conv");
     debug!("Conversation model: Ready");
 
-    while (*keep_running).load(Ordering::Relaxed) {
+    while status.is_alive() {
         if let Ok(input) = input_recv.try_recv() {
             match conv.say(&input) {
                 Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
@@ -169,7 +170,7 @@ pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: 
                 }
             }
             ready_count.ready("conv");
-            while ! ready_count.all_ready() && (*keep_running).load(Ordering::Relaxed)  {
+            while ! ready_count.all_ready() && status.is_alive()  {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
         }
@@ -178,5 +179,5 @@ pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: 
     if conv.save_past("./past.history").is_err() {
         error!("{} failed to remember todays session.", BOT_NAME);
     }
-    (*keep_running).store(false, Ordering::Relaxed);
+    status.stop();
 }

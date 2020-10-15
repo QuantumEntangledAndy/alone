@@ -1,8 +1,8 @@
 use crate::classy::Classy;
 use crate::config::{WordImagesConfig, WordImageData};
 use crate::ready::Ready;
+use crate::status::Status;
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::collections::HashSet;
 
 use rand::seq::SliceRandom;
@@ -55,8 +55,8 @@ impl WordImage {
 }
 
 
-pub fn start_wordimages(keep_running: Arc<AtomicBool>, ready_count: &Ready, config_path: &str, mut input_recv: BusReader<String>) {
-    defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
+pub fn start_wordimages(status: &Status, ready_count: &Ready, config_path: &str, mut input_recv: BusReader<String>) {
+    defer_on_unwind!{ status.stop() }
     debug!("Wordimages: Loading");
     if let Ok(config_str) = std::fs::read_to_string(config_path) {
         if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
@@ -65,11 +65,11 @@ pub fn start_wordimages(keep_running: Arc<AtomicBool>, ready_count: &Ready, conf
                 ready_count.not_ready("wordimage");
                 debug!("Wordimages: Ready");
 
-                while (*keep_running).load(Ordering::Relaxed) {
+                while status.is_alive() {
                     if let Ok(input) = input_recv.try_recv() {
                         wordy.show_images(&input);
                         ready_count.ready("wordimage");
-                        while ! ready_count.all_ready() && (*keep_running).load(Ordering::Relaxed)  {
+                        while ! ready_count.all_ready() && status.is_alive()  {
                             std::thread::sleep(std::time::Duration::from_millis(500));
                         }
                     }
@@ -86,5 +86,5 @@ pub fn start_wordimages(keep_running: Arc<AtomicBool>, ready_count: &Ready, conf
         ready_count.ready("wordimage");
         debug!("Wordimages: Error valid file");
     }
-    (*keep_running).store(false, Ordering::Relaxed);
+    status.stop();
 }
