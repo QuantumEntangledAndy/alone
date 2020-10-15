@@ -29,7 +29,7 @@ impl WordImage {
         let words_owd = self.all_words();
         let words: Vec<_> = words_owd.iter().map(String::as_str).collect();
         if let Some(labels) = self.classy.classify_with_lables(input, &words) {
-            let strong_labels: Vec<_> = labels.iter().filter(|i| i.score > 0.98).collect();
+            let strong_labels: Vec<_> = labels.iter().filter(|i| i.score > 0.96).collect();
             let target_label = strong_labels.choose(&mut rand::thread_rng());
             if let Some(target_label) = target_label {
                 let valid_word_images: Vec<_> = self.word_images.iter().filter(|i| i.words.contains(&target_label.text)).collect();
