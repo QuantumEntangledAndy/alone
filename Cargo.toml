@@ -9,6 +9,7 @@ default-run = "alone"
 
 [dependencies]
 anyhow = "*"
+bus = "*"
 rand = "*"
 ctrlc = "*"
 log =  "*"

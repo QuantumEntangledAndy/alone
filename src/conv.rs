@@ -1,4 +1,3 @@
-use crossbeam_channel::Receiver;
 use rust_bert::pipelines::conversation::{ConversationModel, ConversationManager, Conversation, ConversationConfig};
 use rust_bert::resources::{LocalResource, Resource};
 use tch::{Device};
@@ -6,13 +5,15 @@ use uuid::Uuid;
 
 use std::fs;
 use std::path::{PathBuf};
+use std::sync::{Mutex, Arc, atomic::{AtomicBool, Ordering}};
 
-use std::sync::{Mutex, Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+use bus::BusReader;
 
 use log::*;
 
 use crate::BOT_NAME;
 use crate::Error;
+use crate::ready::Ready;
 
 pub struct Conv {
     model: ConversationModel,
@@ -145,14 +146,14 @@ impl Conv {
 }
 
 
-pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: usize, ready_count: Arc<AtomicUsize>, input_recv: Receiver<String>) {
+pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: usize, ready_count: &Ready, mut input_recv: BusReader<String>) {
     defer_on_unwind! { keep_running.store(false, Ordering::Relaxed); }
     debug!("Conversation model: Loading");
     let conv = Arc::new(Conv::new(&model_name, max_context));
     if conv.add_past("./past.history").is_err() {
         error!("{} couldn't remember the past.", BOT_NAME);
     }
-    (*ready_count).fetch_sub(1, Ordering::Relaxed);
+    ready_count.not_ready("conv");
     debug!("Conversation model: Ready");
 
     while (*keep_running).load(Ordering::Relaxed) {
@@ -167,8 +168,8 @@ pub fn start_conv(keep_running: Arc<AtomicBool>, model_name: &str, max_context: 
                     println!("{}: {}", BOT_NAME, output);
                 }
             }
-            (*ready_count).fetch_sub(1, Ordering::Relaxed);
-            while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+            ready_count.ready("conv");
+            while ! ready_count.all_ready() && (*keep_running).load(Ordering::Relaxed)  {
                 std::thread::sleep(std::time::Duration::from_millis(500));
             }
         }

@@ -1,14 +1,14 @@
-use crossbeam_channel::{unbounded, Sender};
 use crossbeam::scope;
 
 use std::io;
 use std::io::prelude::*;
 
-use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use log::*;
 use err_derive::Error;
 use validator::Validate;
+use bus::{Bus};
 
 #[macro_use(defer_on_unwind)] extern crate scopeguard;
 
@@ -18,10 +18,12 @@ mod senti;
 mod enti;
 mod config;
 mod wordimage;
+mod ready;
 
 use self::conv::{start_conv};
 use self::config::{Config};
 use self::wordimage::{start_wordimages};
+use self::ready::Ready;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -59,15 +61,10 @@ fn main() -> Result<(), Error> {
     info!("Finding {}", BOT_NAME);
 
     let keep_running_arc = Arc::new(AtomicBool::new(true));
-    let mut num_channels: usize = 1;
 
-    if config.word_images.is_some() {
-        num_channels += 1;
-    }
+    let ready = Arc::new(Ready::new());
 
-    let ready_count_arc = Arc::new(AtomicUsize::new(num_channels));
-
-    let (send_input, get_input) = unbounded::<String>();
+    let mut send_input = Bus::new(1000);
 
     debug!("Setting up stop signals");
     let keep_running_signal = keep_running_arc.clone();
@@ -83,28 +80,28 @@ fn main() -> Result<(), Error> {
     .expect("Error setting Ctrl-C handler");
 
     scope(|s| {
-        let input_recv = get_input.clone();
+        let input_recv = send_input.add_rx();
         let keep_running = keep_running_arc.clone();
         let model_name = config.model_name.clone();
-        let ready_count = ready_count_arc.clone();
         let max_context = config.max_context;
+        let ready_count = ready.clone();
         s.spawn(move |_| {
-            start_conv(keep_running, &model_name, max_context, ready_count, input_recv);
+            start_conv(keep_running, &model_name, max_context, &*ready_count, input_recv);
         });
 
-        let input_recv = get_input.clone();
+        let input_recv = send_input.add_rx();
         let keep_running = keep_running_arc.clone();
-        let ready_count = ready_count_arc.clone();
+        let ready_count = ready.clone();
         if let Some(word_images) = config.word_images {
             s.spawn(move |_| {
-                start_wordimages(keep_running, ready_count, &word_images, input_recv);
+                start_wordimages(keep_running, &*ready_count, &word_images, input_recv);
             });
         }
 
         let keep_running = keep_running_arc.clone();
-        let ready_count = ready_count_arc.clone();
+        let ready_count = ready.clone();
         s.spawn(move |_| {
-            console_input(keep_running, ready_count, num_channels, send_input);
+            console_input(keep_running, &*ready_count, send_input);
         });
     }).unwrap();
 
@@ -112,9 +109,9 @@ fn main() -> Result<(), Error> {
 
 }
 
-fn console_input(keep_running: Arc<AtomicBool>, ready_count: Arc<AtomicUsize>, num_channels: usize, send_input: Sender<String>) {
+fn console_input(keep_running: Arc<AtomicBool>, ready_count: &Ready, mut send_input: Bus<String>) {
     defer_on_unwind!{ keep_running.store(false, Ordering::Relaxed); }
-    while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+    while ! ready_count.all_ready() && (*keep_running).load(Ordering::Relaxed)  {
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
     debug!("Starting conv");
@@ -141,17 +138,13 @@ fn console_input(keep_running: Arc<AtomicBool>, ready_count: Arc<AtomicUsize>, n
             break;
         }
         if input.len() > 1 {
-            (*ready_count).store(num_channels, Ordering::Relaxed);
-            for _ in 0..num_channels {
-                if send_input.send(input.to_string()).is_err() {
-                    error!("You lost your voice")
-                }
-            }
+            ready_count.set_all(false);
+            send_input.broadcast(input.to_string());
         } else {
             (*keep_running).store(false, Ordering::Relaxed);
             break;
         }
-        while (*ready_count).load(Ordering::Relaxed) > 0 && (*keep_running).load(Ordering::Relaxed)  {
+        while ! ready_count.all_ready() && (*keep_running).load(Ordering::Relaxed)  {
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
