@@ -9,8 +9,7 @@ use log::*;
 use err_derive::Error;
 use validator::Validate;
 use bus::{Bus};
-
-#[macro_use(defer_on_unwind)] extern crate scopeguard;
+use scopeguard::defer_on_unwind;
 
 mod conv;
 mod classy;

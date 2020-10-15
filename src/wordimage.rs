@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use rand::seq::SliceRandom;
 use validator::Validate;
 use bus::BusReader;
+use scopeguard::defer_on_unwind;
 
 use log::*;
 

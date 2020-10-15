@@ -6,6 +6,7 @@ use uuid::Uuid;
 use std::fs;
 use std::path::{PathBuf};
 use std::sync::{Mutex, Arc};
+use scopeguard::defer_on_unwind;
 
 use bus::BusReader;
 
