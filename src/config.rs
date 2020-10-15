@@ -18,6 +18,12 @@ pub struct Config {
     #[serde(default)]
     #[validate(custom = "ensure_word_images")]
     pub word_images: Option<String>,
+
+    #[serde(default)]
+    pub telegram_token: Option<String>,
+
+    #[serde(default)]
+    pub telegram_id: Option<i64>,
 }
 
 fn deault_debug() -> bool {

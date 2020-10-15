@@ -2,12 +2,14 @@ use crate::classy::Classy;
 use crate::config::{WordImagesConfig, WordImageData};
 use crate::ready::Ready;
 use crate::status::Status;
+use crate::RX_TIMEOUT;
 
+use std::path::PathBuf;
 use std::collections::HashSet;
 
 use rand::seq::SliceRandom;
 use validator::Validate;
-use bus::BusReader;
+use bus::{BusReader, Bus};
 use scopeguard::defer_on_unwind;
 
 use log::*;
@@ -31,7 +33,7 @@ impl WordImage {
         temp_hash.into_iter().collect()
     }
 
-    pub fn show_images(&self, input: &str) {
+    pub fn get_image_path(&self, input: &str) -> Option<PathBuf> {
         let words_owd = self.all_words();
         let words: Vec<_> = words_owd.iter().map(String::as_str).collect();
         if let Some(labels) = self.classy.classify_with_lables(input, &words) {
@@ -41,50 +43,44 @@ impl WordImage {
                 let valid_word_images: Vec<_> = self.word_images.iter().filter(|i| i.words.contains(&target_label.text)).collect();
                 let target_word_image = valid_word_images.choose(&mut rand::thread_rng());
                 if let Some(target_word_image) = target_word_image {
-                    let path = &target_word_image.path;
-                    if path.exists() {
-                        if let Ok(output) = std::process::Command::new("imgcat").args(&[path]).output() {
-                            println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
-                        } else {
-                            error!("Failed to show imgcat for {:?}", path);
-                        }
-                    }
+                    return Some(target_word_image.path.clone());
                 }
             }
         }
+        None
     }
 }
 
 
-pub fn start_wordimages(status: &Status, ready_count: &Ready, config_path: &str, mut input_recv: BusReader<String>) {
+pub fn start_wordimages(
+    status: &Status,
+    ready_count: &Ready,
+    config_path: &str,
+    mut get_from_bot: BusReader<String>,
+    mut send_picture_to_me: Bus<Option<PathBuf>>
+) {
     defer_on_unwind!{ status.stop() }
     debug!("Wordimages: Loading");
+    ready_count.not_ready("wordimage");
     if let Ok(config_str) = std::fs::read_to_string(config_path) {
         if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
             if word_config.validate().is_ok() {
                 let wordy = WordImage::new(&word_config);
-                ready_count.not_ready("wordimage");
                 debug!("Wordimages: Ready");
+                ready_count.ready("wordimage");
 
                 while status.is_alive() {
-                    if let Ok(input) = input_recv.try_recv() {
-                        wordy.show_images(&input);
-                        ready_count.ready("wordimage");
-                        while ! ready_count.all_ready() && status.is_alive()  {
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
+                    if let Ok(input) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                        send_picture_to_me.broadcast(wordy.get_image_path(&input))
                     }
                 }
             } else {
-                ready_count.ready("wordimage");
                 debug!("Wordimages: Error not valid WordImagesConfig");
             }
         } else {
-            ready_count.ready("wordimage");
             debug!("Wordimages: Error not valid toml");
         }
     } else {
-        ready_count.ready("wordimage");
         debug!("Wordimages: Error valid file");
     }
     status.stop();

@@ -2,14 +2,16 @@ use crossbeam::scope;
 
 use std::io;
 use std::io::prelude::*;
-
+use std::path::PathBuf;
 use std::sync::{Arc};
+use std::time::Duration;
 
 use log::*;
 use err_derive::Error;
 use validator::Validate;
-use bus::{Bus};
+use bus::{Bus, BusReader};
 use scopeguard::defer_on_unwind;
+use tokio::runtime::Runtime;
 
 mod conv;
 mod classy;
@@ -19,12 +21,16 @@ mod config;
 mod wordimage;
 mod ready;
 mod status;
+mod telegram;
 
 use self::conv::{start_conv};
 use self::config::{Config};
 use self::wordimage::{start_wordimages};
 use self::ready::Ready;
 use self::status::Status;
+use self::telegram::start_telegram;
+
+const RX_TIMEOUT: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -65,7 +71,9 @@ fn main() -> Result<(), Error> {
 
     let ready = Arc::new(Ready::new());
 
-    let mut send_input = Bus::new(1000);
+    let mut send_to_bot = Bus::new(1000);
+    let mut send_to_me = Bus::new(1000);
+    let mut send_picture_to_me = Bus::new(1000);
 
     debug!("Setting up stop signals");
     let status = status_arc.clone();
@@ -79,28 +87,49 @@ fn main() -> Result<(), Error> {
     .expect("Error setting Ctrl-C handler");
 
     scope(|s| {
-        let input_recv = send_input.add_rx();
+        let get_from_me = send_to_bot.add_rx();
+        let get_from_bot = send_to_me.add_rx();
+        let get_from_bot_to_wordy = send_to_me.add_rx();
+        let get_picture_from_bot = send_picture_to_me.add_rx();
+
         let status = status_arc.clone();
         let model_name = config.model_name.clone();
         let max_context = config.max_context;
         let ready_count = ready.clone();
         s.spawn(move |_| {
-            start_conv(&*status, &model_name, max_context, &*ready_count, input_recv);
+            start_conv(&*status, &model_name, max_context, &*ready_count, get_from_me, send_to_me);
         });
 
-        let input_recv = send_input.add_rx();
         let status = status_arc.clone();
         let ready_count = ready.clone();
         if let Some(word_images) = config.word_images {
             s.spawn(move |_| {
-                start_wordimages(&*status, &*ready_count, &word_images, input_recv);
+                start_wordimages(&*status, &*ready_count, &word_images, get_from_bot_to_wordy, send_picture_to_me);
             });
         }
 
         let status = status_arc.clone();
         let ready_count = ready.clone();
+        let telegram_token = config.telegram_token.clone();
+        let telegram_id = config.telegram_id;
         s.spawn(move |_| {
-            console_input(&*status, &*ready_count, send_input);
+            if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
+                // Create the runtime
+                let mut rt = Runtime::new().unwrap();
+                let _ = rt.block_on(
+                    start_telegram(
+                        &token,
+                        id,
+                        send_to_bot,
+                        get_from_bot,
+                        get_picture_from_bot,
+                        &*status,
+                        &*ready_count,
+                    )
+                );
+            } else {
+                console_input(&*status, &*ready_count, send_to_bot, get_from_bot, get_picture_from_bot);
+            }
         });
     }).unwrap();
 
@@ -108,16 +137,19 @@ fn main() -> Result<(), Error> {
 
 }
 
-fn console_input(status: &Status, ready_count: &Ready, mut send_input: Bus<String>) {
+fn console_input(
+    status: &Status,
+    ready_count: &Ready,
+    mut send_input: Bus<String>,
+    mut get_from_bot: BusReader<String>,
+    mut get_picture_from_bot: BusReader<Option<PathBuf>>
+) {
     defer_on_unwind!{ status.stop(); }
     while ! ready_count.all_ready() && status.is_alive()  {
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
     debug!("Starting conv");
     while status.is_alive() {
-        if ! status.is_alive() {
-            break;
-        }
         print!("You: ");
         let mut input = String::new();
         io::stdout().flush().expect("Could not flush stdout");
@@ -134,7 +166,7 @@ fn console_input(status: &Status, ready_count: &Ready, mut send_input: Bus<Strin
             }
         }
         if ! status.is_alive() {
-            break;
+            break; // Early exit
         }
         if input.len() > 1 {
             ready_count.set_all(false);
@@ -144,12 +176,25 @@ fn console_input(status: &Status, ready_count: &Ready, mut send_input: Bus<Strin
             };
 
             send_input.broadcast(input);
+            while status.is_alive() {
+                if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                    println!("{}: {}", BOT_NAME, reply);
+                }
+            }
+            while status.is_alive() {
+                if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                    if let Some(image_path) = image_path {
+                        if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
+                            println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
+                        } else {
+                            error!("Failed to show imgcat for {:?}", image_path);
+                        }
+                    }
+                }
+            }
         } else {
             status.stop();
             break;
-        }
-        while ! ready_count.all_ready() && status.is_alive()  {
-            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 }

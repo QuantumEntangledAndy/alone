@@ -8,7 +8,7 @@ use std::path::{PathBuf};
 use std::sync::{Mutex, Arc};
 use scopeguard::defer_on_unwind;
 
-use bus::BusReader;
+use bus::{Bus, BusReader};
 
 use log::*;
 
@@ -16,6 +16,7 @@ use crate::BOT_NAME;
 use crate::Error;
 use crate::ready::Ready;
 use crate::status::Status;
+use crate::RX_TIMEOUT;
 
 pub struct Conv {
     model: ConversationModel,
@@ -148,31 +149,35 @@ impl Conv {
 }
 
 
-pub fn start_conv(status: &Status, model_name: &str, max_context: usize, ready_count: &Ready, mut input_recv: BusReader<String>) {
+pub fn start_conv(
+    status: &Status,
+    model_name: &str,
+    max_context: usize,
+    ready_count: &Ready,
+    mut get_from_me: BusReader<String>,
+    mut send_to_me: Bus<String>
+) {
     defer_on_unwind! { status.stop() }
     debug!("Conversation model: Loading");
+    ready_count.not_ready("conv");
     let conv = Arc::new(Conv::new(&model_name, max_context));
     if conv.add_past("./past.history").is_err() {
         error!("{} couldn't remember the past.", BOT_NAME);
     }
-    ready_count.not_ready("conv");
+
     debug!("Conversation model: Ready");
+    ready_count.ready("conv");
 
     while status.is_alive() {
-        if let Ok(input) = input_recv.try_recv() {
+        if let Ok(input) = get_from_me.recv_timeout(RX_TIMEOUT) {
             match conv.say(&input) {
                 Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
                 Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
                 Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
                 Err(_) => {}
                 Ok(output) => {
-                    debug!("Dialogue");
-                    println!("{}: {}", BOT_NAME, output);
+                    send_to_me.broadcast(output.to_string());
                 }
-            }
-            ready_count.ready("conv");
-            while ! ready_count.all_ready() && status.is_alive()  {
-                std::thread::sleep(std::time::Duration::from_millis(500));
             }
         }
     }
