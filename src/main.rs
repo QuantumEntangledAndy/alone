@@ -139,7 +139,12 @@ fn console_input(status: &Status, ready_count: &Ready, mut send_input: Bus<Strin
         }
         if input.len() > 1 {
             ready_count.set_all(false);
-            send_input.broadcast(input.to_string());
+            let input = match input.chars().last().unwrap() {
+                '!'|'.'|'?' => input.trim().to_string(),
+                _ => format!("{}.", input.trim().to_string()),
+            };
+
+            send_input.broadcast(input);
         } else {
             status.stop();
             break;
