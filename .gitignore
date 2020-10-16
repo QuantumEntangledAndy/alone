@@ -1,6 +1,7 @@
 /target
 Cargo.lock
 *.history
+journal.toml
 *.model
 train/*/
 .DS_Store

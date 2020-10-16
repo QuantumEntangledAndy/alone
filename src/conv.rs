@@ -211,7 +211,7 @@ pub fn start_conv(
     debug!("Conversation model: Loading");
     ready_count.not_ready("conv");
     let conv = Arc::new(Conv::new(&model_name, max_context));
-    if conv.remember_past("./past.history").is_err() {
+    if conv.remember_past("./journal.toml").is_err() {
         error!("{} couldn't remember the past.", BOT_NAME);
     }
 
@@ -234,7 +234,7 @@ pub fn start_conv(
         }
     }
     info!("Leaving town");
-    if conv.save_journal("./past.history").is_err() {
+    if conv.save_journal("./journal.toml").is_err() {
         error!("Failed to write journal.");
     }
     status.stop();
