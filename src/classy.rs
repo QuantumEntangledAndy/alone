@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use rust_bert::pipelines::zero_shot_classification::ZeroShotClassificationModel;
 use rust_bert::pipelines::sequence_classification::Label;
 
@@ -15,6 +14,7 @@ impl Classy {
         }
     }
 
+    #[allow(dead_code)]
     pub fn classify(&self, input: &str) -> Option<Vec<Label>> {
         let candidate_labels = &["love", "hello", "location", "time", "sex"];
         self.model.predict_multilabel(

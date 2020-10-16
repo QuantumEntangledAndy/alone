@@ -82,5 +82,6 @@ pub async fn start_telegram(
             }
         }
     }
+    status.stop();
     Ok(())
 }
