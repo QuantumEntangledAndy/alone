@@ -39,7 +39,7 @@ fn ensure_word_images(word_images: &str) -> Result<(), ValidationError> {
     if PathBuf::from(&word_images).exists() {
         Ok(())
     } else {
-        Err(ValidationError::new("Word image config file missind"))
+        Err(ValidationError::new("Word image config file missing"))
     }
 }
 

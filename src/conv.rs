@@ -9,6 +9,7 @@ use std::sync::{Mutex, Arc};
 use scopeguard::defer_on_unwind;
 
 use bus::{Bus, BusReader};
+use serde::{Deserialize, Serialize};
 
 use log::*;
 
@@ -24,6 +25,25 @@ pub struct Conv {
     uuid: Uuid,
     past: Mutex<Vec<String>>,
     max_context: usize,
+    history: Mutex<Vec<Past>>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
+pub enum Speaker {
+    Me,
+    Bot,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Past {
+    speaker: Speaker,
+    id: u64,
+    message: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct History {
+    history: Vec<Past>,
 }
 
 
@@ -69,36 +89,60 @@ impl Conv {
             uuid: conversation_uuid,
             past: Mutex::new(vec!()),
             max_context,
+            history: Mutex::new(Default::default()),
         }
     }
 
-    pub fn add_past(&self, file_path: &str) -> Result<(), Error> {
+    pub fn remember_past(&self, file_path: &str) -> Result<(), Error> {
         let history_path: PathBuf = PathBuf::from(file_path);
         let user_past_str = fs::read_to_string(&history_path).unwrap_or_else(|_| {
             info!("{} does not know you yet", BOT_NAME);
             "".to_string()
         });
 
-        let mut user_past = self.past.lock().unwrap();
-        user_past.append(
-            &mut user_past_str.lines().map(|i| i.to_string()).filter(|x| !x.is_empty()).collect::<Vec<String>>()
-        );
+        let mut history_file: History = toml::from_str(&user_past_str).expect("Couldn't load history.");
 
         let mut conversation_manager = self.manager.lock().unwrap();
         if let Some(conversation) = conversation_manager.get(&self.uuid).as_mut() {
-            for line in &(*user_past) {
-                #[allow(clippy::collapsible_if)]
-                if ! line.is_empty() {
-                    if (*conversation).add_user_input(&line).is_err() {
-                        error!("{} failed to remember", BOT_NAME);
+            history_file.history.sort_unstable_by_key(|k| k.id);
+            let mut my_history = self.history.lock().unwrap();
+            for past in history_file.history {
+                match past.speaker {
+                    Speaker::Me => {
+                        conversation.past_user_inputs.push(past.message.clone());
+                    },
+                    Speaker::Bot => {
+                        conversation.generated_responses.push(past.message.clone());
                     }
-                    (*conversation).mark_processed();
                 }
+                if conversation.add_user_input(&past.message).is_err() {
+                    error!("Failed to read journal entry");
+                }
+                conversation.mark_processed();
+                (*my_history).push(past.clone());
             }
+            (*my_history).sort_unstable_by_key(|k| k.id);
             Ok(())
         } else {
             Err(Error::ConversationUnknown)
         }
+    }
+
+    pub fn add_to_journel(&self, speaker: Speaker, message: &str) {
+        let mut my_history = self.history.lock().unwrap();
+        let new_id;
+        if let Some(last_item) = my_history.last() {
+            new_id = last_item.id + 1;
+        } else {
+            new_id = 0
+        }
+        (*my_history).push(
+            Past{
+                speaker,
+                id: new_id,
+                message: message.to_string()
+            }
+        )
     }
 
     pub fn say(&self, input: &str) -> Result<String, Error> {
@@ -139,8 +183,14 @@ impl Conv {
         Ok(output)
     }
 
-    pub fn save_past(&self, file_path: &str) -> Result<(), Error> {
-        if std::fs::write(&file_path, self.past.lock().unwrap().iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<String>>().join("\n").as_bytes()).is_err() {
+    pub fn save_journal(&self, file_path: &str) -> Result<(), Error> {
+        let my_history = self.history.lock().unwrap();
+        if std::fs::write(
+            &file_path,
+            toml::to_vec(&History{
+                history: (*my_history).clone(),
+            }).unwrap(),
+        ).is_err() {
             Err(Error::UnableToWriteJournel)
         } else {
             Ok(())
@@ -161,7 +211,7 @@ pub fn start_conv(
     debug!("Conversation model: Loading");
     ready_count.not_ready("conv");
     let conv = Arc::new(Conv::new(&model_name, max_context));
-    if conv.add_past("./past.history").is_err() {
+    if conv.remember_past("./past.history").is_err() {
         error!("{} couldn't remember the past.", BOT_NAME);
     }
 
@@ -170,6 +220,8 @@ pub fn start_conv(
 
     while status.is_alive() {
         if let Ok(input) = get_from_me.recv_timeout(RX_TIMEOUT) {
+            conv.add_to_journel(Speaker::Me, &input);
+
             match conv.say(&input) {
                 Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
                 Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
@@ -182,8 +234,8 @@ pub fn start_conv(
         }
     }
     info!("Leaving town");
-    if conv.save_past("./past.history").is_err() {
-        error!("{} failed to remember todays session.", BOT_NAME);
+    if conv.save_journal("./past.history").is_err() {
+        error!("Failed to write journal.");
     }
     status.stop();
 }
