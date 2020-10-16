@@ -2,6 +2,7 @@ use crate::status::Status;
 use crate::ready::Ready;
 
 use futures::StreamExt;
+use futures::future::{Abortable, AbortHandle};
 use std::path::PathBuf;
 
 use scopeguard::defer_on_unwind;
@@ -36,7 +37,13 @@ pub async fn start_telegram(
 
     // Fetch new updates via long poll method
     let mut stream = api.stream();
-    'stream: while let Some(update) = stream.next().await {
+
+    'stream: while let Ok(Some(update)) = {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        status.add_abortable("telegram", abort_handle);
+        let future = Abortable::new(stream.next(), abort_registration);
+        future.await
+    } {
         // If the received update contains a new message...
         let update = update?;
         if let UpdateKind::Message(message) = update.kind {
