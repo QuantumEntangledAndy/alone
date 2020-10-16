@@ -17,6 +17,8 @@ max_context = 6 # How much context to keep in memory
 
 telegram_token = "TOKEN" # Optional: Telegram token
 telegram_id = 123456 # Optional: ID of user to chat to
+
+word_images = "wordimages.toml" # Optional: Location of wordimages.toml
 ```
 
 The `model_name` will be used the name where the files required
@@ -39,8 +41,8 @@ The bot will only chat with a user with the given `telegram_id`.
 
 If either `telegram_token` or `telegram_id` are not set it defaults to console input.
 
-There is also an optional `wordimages.toml` that can be placed in
-the cwd.  It expects to contain.
+There is also an optional `word_images` that when set gives the path
+to a toml with the contents of:
 
 
 ```toml
