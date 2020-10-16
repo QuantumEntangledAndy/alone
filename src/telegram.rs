@@ -56,14 +56,14 @@ pub async fn start_telegram(
                     if let MessageKind::Text { ref data, .. } = message.kind {
                         // Print received text message to stdout.
                         if ! data.trim().starts_with('/') {
-                            println!("You: {}", data.to_string());
+                            debug!("You: {}", data.to_string());
                             {
                                 send_to_bot.broadcast(data.to_string());
                             }
 
                             while status.is_alive() {
                                 if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                    println!("{}: {}", BOT_NAME, reply);
+                                    debug!("{}: {}", BOT_NAME, reply);
                                     api.send(message.text_reply(reply)).await?;
                                     break;
                                 }
