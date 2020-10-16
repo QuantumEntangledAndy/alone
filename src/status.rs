@@ -29,6 +29,7 @@ impl Status {
 
     pub fn add_abortable(&self, tag: &'static str, handle: AbortHandle) {
         let mut abort_handles = self.abort_handles.lock().unwrap();
+        abort_handles.remove(tag);
         abort_handles.insert(tag, handle);
     }
 }
