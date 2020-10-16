@@ -1,5 +1,6 @@
 use serde::Deserialize;
-use validator::{ValidationError};
+#[allow(unused_imports)] // Validate is required in the arm build but not the amd.
+use validator::{ValidationError, Validate};
 use validator_derive::Validate;
 
 use std::path::PathBuf;
