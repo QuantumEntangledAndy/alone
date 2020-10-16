@@ -17,7 +17,7 @@ pub async fn start_telegram(
     id: i64,
     mut send_to_bot: Bus<String>,
     mut get_from_bot: BusReader<String>,
-    mut get_picture_from_bot: BusReader<Option<PathBuf>>,
+    mut get_picture_from_bot: Option<BusReader<Option<PathBuf>>>,
     status: &Status,
     ready_count: &Ready,
 ) -> Result<(), TeleError> {
@@ -54,11 +54,13 @@ pub async fn start_telegram(
                                     api.send(message.text_reply(reply)).await?;
                                 }
                             }
-                            while status.is_alive() {
-                                if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
-                                    if let Some(image_path) = image_path {
-                                        if let Ok(image_path_str) = image_path.into_os_string().into_string() {
-                                            api.send(message.photo_reply(InputFileUpload::with_path(image_path_str))).await?;
+                            if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
+                                while status.is_alive() {
+                                    if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                                        if let Some(image_path) = image_path {
+                                            if let Ok(image_path_str) = image_path.into_os_string().into_string() {
+                                                api.send(message.photo_reply(InputFileUpload::with_path(image_path_str))).await?;
+                                            }
                                         }
                                     }
                                 }

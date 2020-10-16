@@ -73,7 +73,6 @@ fn main() -> Result<(), Error> {
 
     let mut send_to_bot = Bus::new(1000);
     let mut send_to_me = Bus::new(1000);
-    let mut send_picture_to_me = Bus::new(1000);
 
     debug!("Setting up stop signals");
     let status = status_arc.clone();
@@ -90,7 +89,6 @@ fn main() -> Result<(), Error> {
         let get_from_me = send_to_bot.add_rx();
         let get_from_bot = send_to_me.add_rx();
         let get_from_bot_to_wordy = send_to_me.add_rx();
-        let get_picture_from_bot = send_picture_to_me.add_rx();
 
         let status = status_arc.clone();
         let model_name = config.model_name.clone();
@@ -102,11 +100,16 @@ fn main() -> Result<(), Error> {
 
         let status = status_arc.clone();
         let ready_count = ready.clone();
-        if let Some(word_images) = config.word_images {
+        let get_picture_from_bot = if let Some(word_images) = config.word_images {
+            let mut send_picture_to_me = Bus::new(1000);
+            let get_picture_from_bot = Some(send_picture_to_me.add_rx());
             s.spawn(move |_| {
                 start_wordimages(&*status, &*ready_count, &word_images, get_from_bot_to_wordy, send_picture_to_me);
             });
-        }
+            get_picture_from_bot
+        } else {
+            None
+        };
 
         let status = status_arc.clone();
         let ready_count = ready.clone();
@@ -142,7 +145,7 @@ fn console_input(
     ready_count: &Ready,
     mut send_input: Bus<String>,
     mut get_from_bot: BusReader<String>,
-    mut get_picture_from_bot: BusReader<Option<PathBuf>>
+    mut get_picture_from_bot: Option<BusReader<Option<PathBuf>>>,
 ) {
     defer_on_unwind!{ status.stop(); }
     while ! ready_count.all_ready() && status.is_alive()  {
@@ -181,13 +184,15 @@ fn console_input(
                     println!("{}: {}", BOT_NAME, reply);
                 }
             }
-            while status.is_alive() {
-                if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
-                    if let Some(image_path) = image_path {
-                        if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
-                            println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
-                        } else {
-                            error!("Failed to show imgcat for {:?}", image_path);
+            if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
+                while status.is_alive() {
+                    if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                        if let Some(image_path) = image_path {
+                            if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
+                                println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
+                            } else {
+                                error!("Failed to show imgcat for {:?}", image_path);
+                            }
                         }
                     }
                 }
