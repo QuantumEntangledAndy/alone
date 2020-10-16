@@ -12,6 +12,7 @@ use telegram_bot::{Api, UpdateKind, UserId, Integer, MessageChat, MessageKind, I
 use log::*;
 
 use crate::RX_TIMEOUT;
+use crate::BOT_NAME;
 
 pub async fn start_telegram(
     token: &str,
@@ -39,6 +40,7 @@ pub async fn start_telegram(
     let mut stream = api.stream();
 
     'stream: while let Ok(Some(update)) = {
+        debug!("Waiting for new message.");
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         status.add_abortable("telegram", abort_handle);
         let future = Abortable::new(stream.next(), abort_registration);
@@ -52,13 +54,16 @@ pub async fn start_telegram(
                     if let MessageKind::Text { ref data, .. } = message.kind {
                         // Print received text message to stdout.
                         if ! data.trim().starts_with('/') {
+                            println!("You: {}", data.to_string());
                             {
                                 send_to_bot.broadcast(data.to_string());
                             }
 
                             while status.is_alive() {
                                 if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                    println!("{}: {}", BOT_NAME, reply);
                                     api.send(message.text_reply(reply)).await?;
+                                    break;
                                 }
                             }
                             if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
@@ -69,13 +74,10 @@ pub async fn start_telegram(
                                                 api.send(message.photo_reply(InputFileUpload::with_path(image_path_str))).await?;
                                             }
                                         }
+                                        break;
                                     }
                                 }
                             }
-                        }
-
-                        if ! status.is_alive() {
-                            break 'stream;
                         }
                     }
                 }
