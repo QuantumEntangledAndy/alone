@@ -3,6 +3,7 @@ use crate::ready::Ready;
 
 use futures::StreamExt;
 use futures::future::{Abortable, AbortHandle};
+
 use std::path::PathBuf;
 
 use scopeguard::defer_on_unwind;
@@ -13,6 +14,7 @@ use log::*;
 
 use crate::RX_TIMEOUT;
 use crate::BOT_NAME;
+
 
 pub async fn start_telegram(
     token: &str,
@@ -39,7 +41,7 @@ pub async fn start_telegram(
     // Fetch new updates via long poll method
     let mut stream = api.stream();
 
-    'stream: while let Ok(Some(update)) = {
+    while let Ok(Some(update)) = {
         debug!("Waiting for new message.");
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         status.add_abortable("telegram", abort_handle);
@@ -50,7 +52,7 @@ pub async fn start_telegram(
         let update = update?;
         if let UpdateKind::Message(message) = update.kind {
             if let MessageChat::Private(user) = &message.chat  {
-                if user.id == UserId::new(id as Integer) {
+                if user.id == UserId::new(id as Integer) && message.reply_to_message.is_none() {
                     if let MessageKind::Text { ref data, .. } = message.kind {
                         // Print received text message to stdout.
                         if ! data.trim().starts_with('/') {
