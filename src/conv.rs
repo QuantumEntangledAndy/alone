@@ -210,7 +210,7 @@ impl Conv {
                 "yourself" => "myself",
                 "i'm" => "you're",
                 "i" => "you",
-                "my" => "Your",
+                "my" => "your",
                 "me" => "you",
                 "mine" => "yours",
                 "myself" => "yourself",
