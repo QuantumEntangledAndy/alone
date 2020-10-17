@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub struct Status{
     alive: AtomicBool,
     abort_handles: Mutex<HashMap<&'static str, AbortHandle>>,
+    images: AtomicBool,
 }
 
 impl Status {
@@ -12,6 +13,7 @@ impl Status {
         Self {
             alive: AtomicBool::new(true),
             abort_handles: Mutex::new(Default::default()),
+            images: AtomicBool::new(false),
         }
     }
 
@@ -31,5 +33,12 @@ impl Status {
         let mut abort_handles = self.abort_handles.lock().unwrap();
         abort_handles.remove(tag);
         abort_handles.insert(tag, handle);
+    }
+
+    pub fn enable_images(&self, enabled: bool) {
+        self.images.store(enabled, Ordering::Relaxed);
+    }
+    pub fn images_enabled(&self) -> bool {
+        self.images.load(Ordering::Relaxed)
     }
 }

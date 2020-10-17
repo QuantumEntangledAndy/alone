@@ -55,45 +55,57 @@ pub async fn start_telegram(
                 if user.id == UserId::new(id as Integer) && message.reply_to_message.is_none() {
                     if let MessageKind::Text { ref data, .. } = message.kind {
                         // Print received text message to stdout.
-                        if ! data.trim().starts_with('/') {
-                            debug!("You: {}", data.to_string());
-                            {
-                                send_to_bot.broadcast(data.to_string());
-                            }
+                        match data.trim() {
+                            "/noimages" => {
+                                status.enable_images(false);
+                            },
+                            "/yesimages" => {
+                                status.enable_images(true);
+                            },
+                            "/stop" => {
+                                status.stop();
+                                break;
+                            },
+                            n => {
+                                debug!("You: {}", n.to_string());
+                                {
+                                    send_to_bot.broadcast(n.to_string());
+                                }
 
-                            if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
-                                while status.is_alive() {
-                                    if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
-                                        if let Some(image_path) = image_path {
-                                            if let Ok(image_path_str) = image_path.into_os_string().into_string() {
-                                                let mut photo = message.photo_reply(InputFileUpload::with_path(image_path_str));
-                                                while status.is_alive() { // Now add text as a caption
+                                if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
+                                    while status.is_alive() {
+                                        if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                                            if let Some(image_path) = image_path {
+                                                if let Ok(image_path_str) = image_path.into_os_string().into_string() {
+                                                    let mut photo = message.photo_reply(InputFileUpload::with_path(image_path_str));
+                                                    while status.is_alive() { // Now add text as a caption
+                                                        if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                                            debug!("{}: {}", BOT_NAME, reply);
+                                                            photo.caption(reply);
+                                                            break;
+                                                        }
+                                                    }
+                                                    api.send(photo).await?;
+                                                }
+                                            } else { // No photo this time just senf the message
+                                                while status.is_alive() {
                                                     if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
                                                         debug!("{}: {}", BOT_NAME, reply);
-                                                        photo.caption(reply);
+                                                        api.send(message.text_reply(reply)).await?;
                                                         break;
                                                     }
                                                 }
-                                                api.send(photo).await?;
                                             }
-                                        } else { // No photo this time just senf the message
-                                            while status.is_alive() {
-                                                if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                                    debug!("{}: {}", BOT_NAME, reply);
-                                                    api.send(message.text_reply(reply)).await?;
-                                                    break;
-                                                }
-                                            }
+                                            break;
                                         }
-                                        break;
                                     }
-                                }
-                            } else { // No photos just send the message
-                                while status.is_alive() {
-                                    if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                        debug!("{}: {}", BOT_NAME, reply);
-                                        api.send(message.text_reply(reply)).await?;
-                                        break;
+                                } else { // No photos just send the message
+                                    while status.is_alive() {
+                                        if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                            debug!("{}: {}", BOT_NAME, reply);
+                                            api.send(message.text_reply(reply)).await?;
+                                            break;
+                                        }
                                     }
                                 }
                             }

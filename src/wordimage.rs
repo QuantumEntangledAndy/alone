@@ -71,7 +71,11 @@ pub fn start_wordimages(
 
                 while status.is_alive() {
                     if let Ok(input) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                        send_picture_to_me.broadcast(wordy.get_image_path(&input))
+                        if status.images_enabled() {
+                            send_picture_to_me.broadcast(wordy.get_image_path(&input));
+                        } else {
+                            send_picture_to_me.broadcast(None);
+                        }
                     }
                 }
             } else {
