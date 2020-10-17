@@ -116,7 +116,7 @@ impl Conv {
                         conversation.generated_responses.push(past.message.clone());
                     }
                 }
-                if conversation.add_user_input(&Self::swap_persons(&past.message)).is_err() {
+                if conversation.add_user_input(&past.message).is_err() {
                     error!("Failed to read journal entry");
                 }
                 conversation.mark_processed();
@@ -163,7 +163,7 @@ impl Conv {
                     convo.generated_responses.drain(0..drain_amount);
                     trace!("New len: {:?}", convo.generated_responses.len());
                 }
-                if convo.add_user_input(&Self::swap_persons(input)).is_err() {
+                if convo.add_user_input(&input).is_err() {
                     return Err(Error::UnableToSpeak);
                 }
             }
@@ -198,6 +198,7 @@ impl Conv {
         }
     }
 
+    #[allow(dead_code)]
     fn swap_persons(input: &str) -> String {
         let mut words = vec![];
         for word in input.split(' ').filter(|i| !i.is_empty()) {
