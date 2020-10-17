@@ -10,6 +10,7 @@ use scopeguard::defer_on_unwind;
 
 use bus::{Bus, BusReader};
 use serde::{Deserialize, Serialize};
+use inflector::cases::{sentencecase::{is_sentence_case, to_sentence_case}, snakecase::to_snake_case};
 
 use log::*;
 
@@ -115,7 +116,7 @@ impl Conv {
                         conversation.generated_responses.push(past.message.clone());
                     }
                 }
-                if conversation.add_user_input(&past.message).is_err() {
+                if conversation.add_user_input(&Self::swap_persons(&past.message)).is_err() {
                     error!("Failed to read journal entry");
                 }
                 conversation.mark_processed();
@@ -162,7 +163,7 @@ impl Conv {
                     convo.generated_responses.drain(0..drain_amount);
                     trace!("New len: {:?}", convo.generated_responses.len());
                 }
-                if convo.add_user_input(&input).is_err() {
+                if convo.add_user_input(&Self::swap_persons(input)).is_err() {
                     return Err(Error::UnableToSpeak);
                 }
             }
@@ -195,6 +196,33 @@ impl Conv {
         } else {
             Ok(())
         }
+    }
+
+    fn swap_persons(input: &str) -> String {
+        let mut words = vec![];
+        for word in input.split(' ').filter(|i| !i.is_empty()) {
+            let mut new_word = match to_snake_case(&word).as_str() {
+                "you're" => "I'm",
+                "youre" => "I'm",
+                "you" => "I",
+                "your" => "my",
+                "yours" => "mine",
+                "yourself" => "myself",
+                "i'm" => "you're",
+                "i" => "you",
+                "my" => "Your",
+                "me" => "you",
+                "mine" => "yours",
+                "myself" => "yourself",
+                n => n,
+            }.to_string();
+            if is_sentence_case(&word) {
+                new_word = to_sentence_case(&new_word);
+            }
+            words.push(new_word);
+        }
+
+        words.join(" ")
     }
 }
 

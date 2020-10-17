@@ -9,6 +9,8 @@ default-run = "alone"
 
 [dependencies]
 futures = "*"
+Inflector = "*"
+regex = "*"
 tokio = "*"
 telegram-bot = "*"
 bus = "*"
