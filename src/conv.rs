@@ -256,6 +256,7 @@ pub fn start_conv(
                 Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
                 Err(_) => {}
                 Ok(output) => {
+                    conv.add_to_journel(Speaker::Bot, &output);
                     send_to_me.broadcast(output.to_string());
                 }
             }
