@@ -151,20 +151,27 @@ impl Conv {
         if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
             if self.max_context > 0 {
                 if convo.past_user_inputs.len() > self.max_context {
-                    trace!("Old len: {:?}", convo.past_user_inputs.len());
+                    trace!("Old UserInput len: {:?}", convo.past_user_inputs.len());
                     let drain_amount = convo.past_user_inputs.len() - self.max_context;
                     convo.past_user_inputs.drain(0..drain_amount);
-                    trace!("New len: {:?}", convo.past_user_inputs.len());
+                    trace!("New UserInput len: {:?}", convo.past_user_inputs.len());
                 }
                 if convo.generated_responses.len() > self.max_context {
-                    trace!("Old len: {:?}", convo.generated_responses.len());
+                    trace!("Old GenResp len: {:?}", convo.generated_responses.len());
                     let drain_amount = convo.generated_responses.len() - self.max_context;
                     convo.generated_responses.drain(0..drain_amount);
-                    trace!("New len: {:?}", convo.generated_responses.len());
+                    trace!("New GenResp len: {:?}", convo.generated_responses.len());
                 }
-                if convo.add_user_input(&input).is_err() {
-                    return Err(Error::UnableToSpeak);
+                let expected_history_size = convo.generated_responses.len() + convo.past_user_inputs.len();
+                if convo.history.len() > expected_history_size {
+                    trace!("Old Hist len: {:?}", convo.generated_responses.len());
+                    let drain_amount = convo.history.len() - expected_history_size;
+                    convo.history.drain(0..drain_amount);
+                    trace!("New Hist len: {:?}", convo.generated_responses.len());
                 }
+            }
+            if convo.add_user_input(&input).is_err() {
+                return Err(Error::UnableToSpeak);
             }
         } else {
             return Err(Error::ConversationUnknown);
