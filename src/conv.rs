@@ -119,7 +119,13 @@ impl Conv {
                 (*my_history).push(past.clone());
             }
             (*my_history).sort_unstable_by_key(|k| k.id);
-            let history_texts: Vec<&str> = (*my_history).iter().map(|k| k.message.as_str()).collect();
+            let history_texts: Vec<&str>;
+            if self.max_context > 0 && (*my_history).len() > self.max_context*2 {
+                let max_range = std::cmp::min(self.max_context*2, (*my_history).len()-1);
+                history_texts = (*my_history)[0..max_range].iter().map(|k| k.message.as_str()).collect();
+            } else {
+                history_texts = (*my_history).iter().map(|k| k.message.as_str()).collect();
+            }
             let history_ids = self.model.encode_prompts(&history_texts);
             conversation.load_from_history(history_texts, history_ids);
             Ok(())
@@ -148,28 +154,8 @@ impl Conv {
     pub fn say(&self, input: &str) -> Result<String, Error> {
         trace!("  Conv recieved: {}", input);
         let mut conversation_manager = self.manager.lock().unwrap();
-        if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
-            if self.max_context > 0 {
-                if convo.past_user_inputs.len() > self.max_context {
-                    trace!("Old UserInput len: {:?}", convo.past_user_inputs.len());
-                    let drain_amount = convo.past_user_inputs.len() - self.max_context;
-                    convo.past_user_inputs.drain(0..drain_amount);
-                    trace!("New UserInput len: {:?}", convo.past_user_inputs.len());
-                }
-                if convo.generated_responses.len() > self.max_context {
-                    trace!("Old GenResp len: {:?}", convo.generated_responses.len());
-                    let drain_amount = convo.generated_responses.len() - self.max_context;
-                    convo.generated_responses.drain(0..drain_amount);
-                    trace!("New GenResp len: {:?}", convo.generated_responses.len());
-                }
-                let expected_history_size = convo.generated_responses.len() + convo.past_user_inputs.len();
-                if convo.history.len() > expected_history_size {
-                    trace!("Old Hist len: {:?}", convo.generated_responses.len());
-                    let drain_amount = convo.history.len() - expected_history_size;
-                    convo.history.drain(0..drain_amount);
-                    trace!("New Hist len: {:?}", convo.generated_responses.len());
-                }
-            }
+        if let Some(mut convo) = conversation_manager.get(&self.uuid).as_mut() {
+            self.trim_context(&mut convo);
             if convo.add_user_input(&input).is_err() {
                 return Err(Error::UnableToSpeak);
             }
@@ -188,6 +174,30 @@ impl Conv {
         }?;
         self.past.lock().unwrap().push(input.to_owned());
         Ok(output)
+    }
+
+    fn trim_context(&self, convo: &mut Conversation) {
+        if self.max_context > 0 {
+            if convo.past_user_inputs.len() > self.max_context {
+                trace!("Old UserInput len: {:?}", convo.past_user_inputs.len());
+                let drain_amount = convo.past_user_inputs.len() - self.max_context;
+                convo.past_user_inputs.drain(0..drain_amount);
+                trace!("New UserInput len: {:?}", convo.past_user_inputs.len());
+            }
+            if convo.generated_responses.len() > self.max_context {
+                trace!("Old GenResp len: {:?}", convo.generated_responses.len());
+                let drain_amount = convo.generated_responses.len() - self.max_context;
+                convo.generated_responses.drain(0..drain_amount);
+                trace!("New GenResp len: {:?}", convo.generated_responses.len());
+            }
+            let expected_history_size = convo.generated_responses.len() + convo.past_user_inputs.len();
+            if convo.history.len() > expected_history_size {
+                trace!("Old Hist len: {:?}", convo.generated_responses.len());
+                let drain_amount = convo.history.len() - expected_history_size;
+                convo.history.drain(0..drain_amount);
+                trace!("New Hist len: {:?}", convo.generated_responses.len());
+            }
+        }
     }
 
     pub fn save_journal(&self, file_path: &str) -> Result<(), Error> {
