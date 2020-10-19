@@ -116,13 +116,12 @@ impl Conv {
                         conversation.generated_responses.push(past.message.clone());
                     }
                 }
-                if conversation.add_user_input(&past.message).is_err() {
-                    error!("Failed to read journal entry");
-                }
-                conversation.mark_processed();
                 (*my_history).push(past.clone());
             }
             (*my_history).sort_unstable_by_key(|k| k.id);
+            let history_texts: Vec<&str> = (*my_history).iter().map(|k| k.message.as_str()).collect();
+            let history_ids = self.model.encode_prompts(&history_texts);
+            conversation.load_from_history(history_texts, history_ids);
             Ok(())
         } else {
             Err(Error::ConversationUnknown)
