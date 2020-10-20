@@ -66,6 +66,12 @@ pub async fn start_telegram(
                                 status.stop();
                                 break;
                             },
+                            "/start" => {
+                                api.send(message.text_reply("Waiting for you to say something")).await?;
+                            },
+                            n if n.starts_with('/') => {
+                                debug!("Got unknown command from telegram {}", n)
+                            }
                             n => {
                                 debug!("You: {}", n.to_string());
                                 {
