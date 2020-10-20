@@ -90,14 +90,16 @@ pub fn start_wordimages(
                         }
                     }
                 }
+
+                debug!("Wordimages: Shutting down");
             } else {
-                debug!("Wordimages: Error not valid WordImagesConfig");
+                error!("Wordimages: Error not valid WordImagesConfig");
             }
         } else {
-            debug!("Wordimages: Error not valid toml");
+            error!("Wordimages: Error not valid toml");
         }
     } else {
-        debug!("Wordimages: Error valid file");
+        error!("Wordimages: Error file not readable");
     }
     status.stop();
 }

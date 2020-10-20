@@ -162,6 +162,7 @@ pub async fn start_telegram(
             }
         }
     }
+    debug!("Telegram: Shutting down");
     status.stop();
     Ok(())
 }
