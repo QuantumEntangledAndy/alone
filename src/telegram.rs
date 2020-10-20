@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use scopeguard::defer_on_unwind;
 use bus::{Bus, BusReader};
-use telegram_bot::{Api, UpdateKind, UserId, Integer, MessageChat, MessageKind, InputFileUpload, CanReplySendMessage, CanReplySendPhoto, Error as TeleError};
+use telegram_bot::{Api, UpdateKind, UserId, Integer, MessageChat, MessageKind, InputFileUpload, CanReplySendMessage, CanReplySendPhoto, Error as TeleError, reply_markup};
 
 use log::*;
 
@@ -38,6 +38,12 @@ pub async fn start_telegram(
 
     info!("Telegram Started");
 
+    let reply_keyboard = reply_markup!(reply_keyboard, selective,
+         ["/stop"],
+         ["/yesimages"],
+         ["/noimages"]
+    );
+
     // Fetch new updates via long poll method
     let mut stream = api.stream();
 
@@ -55,6 +61,8 @@ pub async fn start_telegram(
                 if user.id == UserId::new(id as Integer) && message.reply_to_message.is_none() {
                     if let MessageKind::Text { ref data, .. } = message.kind {
                         // Print received text message to stdout.
+                        let mut reply_message = None;
+                        let mut reply_pic = None;
                         match data.trim() {
                             "/noimages" => {
                                 status.enable_images(false);
@@ -67,7 +75,7 @@ pub async fn start_telegram(
                                 break;
                             },
                             "/start" => {
-                                api.send(message.text_reply("Waiting for you to say something")).await?;
+                                reply_message = Some("Waiting for you to say something".to_string());
                             },
                             n if n.starts_with('/') => {
                                 debug!("Got unknown command from telegram {}", n)
@@ -77,42 +85,44 @@ pub async fn start_telegram(
                                 {
                                     send_to_bot.broadcast(n.to_string());
                                 }
-
+                                while status.is_alive() {
+                                    if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                        debug!("{}: {}", BOT_NAME, reply);
+                                        reply_message = Some(reply);
+                                    }
+                                }
                                 if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
                                     while status.is_alive() {
                                         if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
                                             if let Some(image_path) = image_path {
                                                 if let Ok(image_path_str) = image_path.into_os_string().into_string() {
-                                                    let mut photo = message.photo_reply(InputFileUpload::with_path(image_path_str));
-                                                    while status.is_alive() { // Now add text as a caption
-                                                        if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                                            debug!("{}: {}", BOT_NAME, reply);
-                                                            photo.caption(reply);
-                                                            break;
-                                                        }
-                                                    }
-                                                    api.send(photo).await?;
-                                                }
-                                            } else { // No photo this time just senf the message
-                                                while status.is_alive() {
-                                                    if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                                        debug!("{}: {}", BOT_NAME, reply);
-                                                        api.send(message.text_reply(reply)).await?;
-                                                        break;
-                                                    }
+                                                    reply_pic = Some(image_path_str);
                                                 }
                                             }
-                                            break;
                                         }
                                     }
-                                } else { // No photos just send the message
-                                    while status.is_alive() {
-                                        if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                            debug!("{}: {}", BOT_NAME, reply);
-                                            api.send(message.text_reply(reply)).await?;
-                                            break;
-                                        }
-                                    }
+                                }
+                            }
+                        }
+                        if status.is_alive() {
+                            match (reply_message, reply_pic) {
+                                (Some(reply), Some(pic)) => {
+                                    let mut send_this = message.photo_reply(InputFileUpload::with_path(pic));
+                                    send_this.reply_markup(reply_keyboard.clone());
+                                    send_this.caption(reply);
+                                    api.send(send_this).await?;
+                                },
+                                (Some(reply), None) => {
+                                    let mut send_this = message.text_reply(reply);
+                                    send_this.reply_markup(reply_keyboard.clone());
+                                    api.send(send_this).await?;
+                                },
+                                (None, Some(pic)) => {
+                                    let mut send_this = message.photo_reply(InputFileUpload::with_path(pic));
+                                    send_this.reply_markup(reply_keyboard.clone());
+                                    api.send(send_this).await?;
+                                },
+                                (None, None) => {
                                 }
                             }
                         }
