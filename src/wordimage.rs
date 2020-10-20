@@ -6,6 +6,7 @@ use crate::RX_TIMEOUT;
 
 use std::path::PathBuf;
 use std::collections::HashSet;
+use std::sync::mpsc::RecvTimeoutError;
 
 use rand::seq::SliceRandom;
 use validator::Validate;
@@ -71,11 +72,21 @@ pub fn start_wordimages(
                 ready_count.ready("wordimage");
 
                 while status.is_alive() {
-                    if let Ok(input) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                        if status.images_enabled() {
-                            send_picture_to_me.broadcast(wordy.get_image_path(&input));
-                        } else {
-                            send_picture_to_me.broadcast(None);
+                    match get_from_bot.recv_timeout(RX_TIMEOUT) {
+                        Ok(input) => {
+                            if status.images_enabled() {
+                                send_picture_to_me.broadcast(wordy.get_image_path(&input));
+                            } else {
+                                send_picture_to_me.broadcast(None);
+                            }
+                        },
+                        Err(RecvTimeoutError::Disconnected) => {
+                            status.stop();
+                            error!("Bot communication channel dropped.");
+                            break;
+                        }
+                        Err(RecvTimeoutError::Timeout) => {
+                            continue;
                         }
                     }
                 }

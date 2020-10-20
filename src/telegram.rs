@@ -5,6 +5,7 @@ use futures::StreamExt;
 use futures::future::{Abortable, AbortHandle};
 
 use std::path::PathBuf;
+use std::sync::mpsc::RecvTimeoutError;
 
 use scopeguard::defer_on_unwind;
 use bus::{Bus, BusReader};
@@ -86,21 +87,41 @@ pub async fn start_telegram(
                                     send_to_bot.broadcast(n.to_string());
                                 }
                                 while status.is_alive() {
-                                    if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                        debug!("{}: {}", BOT_NAME, reply);
-                                        reply_message = Some(reply);
-                                        break;
+                                    match get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                        Ok(reply) => {
+                                            debug!("{}: {}", BOT_NAME, reply);
+                                            reply_message = Some(reply);
+                                            break;
+                                        },
+                                        Err(RecvTimeoutError::Disconnected) => {
+                                            status.stop();
+                                            error!("Bot communication channel dropped.");
+                                            break;
+                                        }
+                                        Err(RecvTimeoutError::Timeout) => {
+                                            continue;
+                                        }
                                     }
                                 }
                                 if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
                                     while status.is_alive() {
-                                        if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
-                                            if let Some(image_path) = image_path {
-                                                if let Ok(image_path_str) = image_path.into_os_string().into_string() {
-                                                    reply_pic = Some(image_path_str);
+                                        match get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                                            Ok(image_path) => {
+                                                if let Some(image_path) = image_path {
+                                                    if let Ok(image_path_str) = image_path.into_os_string().into_string() {
+                                                        reply_pic = Some(image_path_str);
+                                                    }
                                                 }
+                                                break;
+                                            },
+                                            Err(RecvTimeoutError::Disconnected) => {
+                                                status.stop();
+                                                error!("Bot picture communication channel dropped.");
+                                                break;
                                             }
-                                            break;
+                                            Err(RecvTimeoutError::Timeout) => {
+                                                continue;
+                                            }
                                         }
                                     }
                                 }

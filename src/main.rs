@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use std::path::PathBuf;
 use std::sync::{Arc};
 use std::time::Duration;
+use std::sync::mpsc::RecvTimeoutError;
 
 use log::*;
 use err_derive::Error;
@@ -181,19 +182,41 @@ fn console_input(
 
             send_input.broadcast(input);
             while status.is_alive() {
-                if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
-                    println!("{}: {}", BOT_NAME, reply);
+                match get_from_bot.recv_timeout(RX_TIMEOUT) {
+                    Ok(reply) => {
+                        println!("{}: {}", BOT_NAME, reply);
+                        break;
+                    },
+                    Err(RecvTimeoutError::Disconnected) => {
+                        status.stop();
+                        error!("Bot communication channel dropped.");
+                        break;
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        continue;
+                    }
                 }
             }
             if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
                 while status.is_alive() {
-                    if let Ok(image_path) = get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
-                        if let Some(image_path) = image_path {
-                            if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
-                                println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
-                            } else {
-                                error!("Failed to show imgcat for {:?}", image_path);
+                    match get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
+                        Ok(image_path) => {
+                            if let Some(image_path) = image_path {
+                                if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
+                                    println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
+                                } else {
+                                    error!("Failed to show imgcat for {:?}", image_path);
+                                }
                             }
+                            break;
+                        },
+                        Err(RecvTimeoutError::Disconnected) => {
+                            status.stop();
+                            error!("Bot pic communication channel dropped.");
+                            break;
+                        }
+                        Err(RecvTimeoutError::Timeout) => {
+                            continue;
                         }
                     }
                 }

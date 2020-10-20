@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use std::fs;
 use std::path::{PathBuf};
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Mutex, Arc};
 use scopeguard::defer_on_unwind;
 
@@ -264,18 +265,28 @@ pub fn start_conv(
     ready_count.ready("conv");
 
     while status.is_alive() {
-        if let Ok(input) = get_from_me.recv_timeout(RX_TIMEOUT) {
-            conv.add_to_journel(Speaker::Me, &input);
+        match get_from_me.recv_timeout(RX_TIMEOUT) {
+            Ok(input) => {
+                 conv.add_to_journel(Speaker::Me, &input);
 
-            match conv.say(&input) {
-                Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
-                Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
-                Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
-                Err(_) => {}
-                Ok(output) => {
-                    conv.add_to_journel(Speaker::Bot, &output);
-                    send_to_me.broadcast(output.to_string());
-                }
+                 match conv.say(&input) {
+                     Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
+                     Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
+                     Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
+                     Err(_) => {}
+                     Ok(output) => {
+                         conv.add_to_journel(Speaker::Bot, &output);
+                         send_to_me.broadcast(output.to_string());
+                     }
+                 }
+            },
+            Err(RecvTimeoutError::Disconnected) => {
+                status.stop();
+                error!("User communication channel dropped.");
+                break;
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                continue;
             }
         }
     }
