@@ -89,6 +89,7 @@ pub async fn start_telegram(
                                     if let Ok(reply) = get_from_bot.recv_timeout(RX_TIMEOUT) {
                                         debug!("{}: {}", BOT_NAME, reply);
                                         reply_message = Some(reply);
+                                        break;
                                     }
                                 }
                                 if let Some(get_picture_from_bot) = get_picture_from_bot.as_mut() {
@@ -99,6 +100,7 @@ pub async fn start_telegram(
                                                     reply_pic = Some(image_path_str);
                                                 }
                                             }
+                                            break;
                                         }
                                     }
                                 }
