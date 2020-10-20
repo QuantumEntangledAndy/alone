@@ -64,42 +64,52 @@ pub fn start_wordimages(
     defer_on_unwind!{ status.stop() }
     debug!("Wordimages: Loading");
     ready_count.not_ready("wordimage");
-    if let Ok(config_str) = std::fs::read_to_string(config_path) {
-        if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
-            if word_config.validate().is_ok() {
-                let wordy = WordImage::new(model_name, &word_config);
-                debug!("Wordimages: Ready");
-                ready_count.ready("wordimage");
+    match std::fs::read_to_string(config_path) {
+        Ok(config_str) => {
+            match toml::from_str::<WordImagesConfig>(&config_str) {
+                Ok(word_config) => {
+                    match word_config.validate() {
+                        Ok(_) => {
+                            let wordy = WordImage::new(model_name, &word_config);
+                            debug!("Wordimages: Ready");
+                            ready_count.ready("wordimage");
 
-                while status.is_alive() {
-                    match get_from_bot.recv_timeout(RX_TIMEOUT) {
-                        Ok(input) => {
-                            if status.images_enabled() {
-                                send_picture_to_me.broadcast(wordy.get_image_path(&input));
-                            } else {
-                                send_picture_to_me.broadcast(None);
+                            while status.is_alive() {
+                                match get_from_bot.recv_timeout(RX_TIMEOUT) {
+                                    Ok(input) => {
+                                        if status.images_enabled() {
+                                            send_picture_to_me.broadcast(wordy.get_image_path(&input));
+                                        } else {
+                                            send_picture_to_me.broadcast(None);
+                                        }
+                                    },
+                                    Err(RecvTimeoutError::Disconnected) => {
+                                        status.stop();
+                                        error!("Bot communication channel dropped.");
+                                        break;
+                                    }
+                                    Err(RecvTimeoutError::Timeout) => {
+                                        continue;
+                                    }
+                                }
                             }
-                        },
-                        Err(RecvTimeoutError::Disconnected) => {
-                            status.stop();
-                            error!("Bot communication channel dropped.");
-                            break;
+
+                            debug!("Wordimages: Shutting down");
                         }
-                        Err(RecvTimeoutError::Timeout) => {
-                            continue;
+                        Err(e) => {
+                            error!("Wordimages: Error not valid WordImagesConfig: {}", e);
                         }
                     }
+                },
+                Err(e) => {
+                    error!("Wordimages: Error not valid toml: {}", e);
                 }
-
-                debug!("Wordimages: Shutting down");
-            } else {
-                error!("Wordimages: Error not valid WordImagesConfig");
             }
-        } else {
-            error!("Wordimages: Error not valid toml");
         }
-    } else {
-        error!("Wordimages: Error file not readable");
+        Err(e) => {
+            error!("Wordimages: Error file not readable: {}", e);
+        }
     }
+
     status.stop();
 }
