@@ -20,9 +20,9 @@ pub struct WordImage {
 }
 
 impl WordImage {
-    pub fn new(config: &WordImagesConfig) -> Self {
+    pub fn new(model_name: &str, config: &WordImagesConfig) -> Self {
         Self {
-            classy: Classy::new(),
+            classy: Classy::new(model_name),
             word_images: config.word_images.to_vec(),
         }
     }
@@ -55,6 +55,7 @@ impl WordImage {
 pub fn start_wordimages(
     status: &Status,
     ready_count: &Ready,
+    model_name: &str,
     config_path: &str,
     mut get_from_bot: BusReader<String>,
     mut send_picture_to_me: Bus<Option<PathBuf>>
@@ -65,7 +66,7 @@ pub fn start_wordimages(
     if let Ok(config_str) = std::fs::read_to_string(config_path) {
         if let Ok(word_config) = toml::from_str::<WordImagesConfig>(&config_str) {
             if word_config.validate().is_ok() {
-                let wordy = WordImage::new(&word_config);
+                let wordy = WordImage::new(model_name, &word_config);
                 debug!("Wordimages: Ready");
                 ready_count.ready("wordimage");
 

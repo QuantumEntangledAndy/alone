@@ -100,11 +100,12 @@ fn main() -> Result<(), Error> {
 
         let status = status_arc.clone();
         let ready_count = ready.clone();
+        let model_name = config.classify_model_name.clone();
         let get_picture_from_bot = if let Some(word_images) = config.word_images {
             let mut send_picture_to_me = Bus::new(1000);
             let get_picture_from_bot = Some(send_picture_to_me.add_rx());
             s.spawn(move |_| {
-                start_wordimages(&*status, &*ready_count, &word_images, get_from_bot_to_wordy, send_picture_to_me);
+                start_wordimages(&*status, &*ready_count, &model_name, &word_images, get_from_bot_to_wordy, send_picture_to_me);
             });
             get_picture_from_bot
         } else {
