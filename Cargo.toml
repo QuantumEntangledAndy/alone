@@ -9,6 +9,7 @@ default-run = "alone"
 
 [dependencies]
 futures = "*"
+clap = { git = "https://github.com/clap-rs/clap" }
 Inflector = "*"
 regex = "*"
 tokio = "*"

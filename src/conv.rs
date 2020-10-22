@@ -15,7 +15,6 @@ use inflector::cases::{sentencecase::{is_sentence_case, to_sentence_case}, snake
 
 use log::*;
 
-use crate::BOT_NAME;
 use crate::Error;
 use crate::ready::Ready;
 use crate::status::Status;
@@ -98,7 +97,7 @@ impl Conv {
     pub fn remember_past(&self, file_path: &str) -> Result<(), Error> {
         let history_path: PathBuf = PathBuf::from(file_path);
         let user_past_str = fs::read_to_string(&history_path).unwrap_or_else(|_| {
-            info!("{} does not know you yet", BOT_NAME);
+            info!("They do not know you yet");
             "".to_string()
         });
 
@@ -258,7 +257,7 @@ pub fn start_conv(
     ready_count.not_ready("conv");
     let conv = Arc::new(Conv::new(&model_name, max_context));
     if conv.remember_past("./journal.toml").is_err() {
-        error!("{} couldn't remember the past.", BOT_NAME);
+        error!("They couldn't remember the past.");
     }
 
     debug!("Conversation model: Ready");
@@ -270,9 +269,9 @@ pub fn start_conv(
                  conv.add_to_journel(Speaker::Me, &input);
 
                  match conv.say(&input) {
-                     Err(Error::UnableToHear) => error!("{} couldn't hear you", BOT_NAME),
-                     Err(Error::UnableToSpeak) => error!("{} couldn't speak to you", BOT_NAME),
-                     Err(Error::ConversationUnknown) => error!("{} doesn't know you", BOT_NAME),
+                     Err(Error::UnableToHear) => error!("Couldn't hear you"),
+                     Err(Error::UnableToSpeak) => error!("Couldn't speak to you"),
+                     Err(Error::ConversationUnknown) => error!("Doesn't know you"),
                      Err(_) => {}
                      Ok(output) => {
                          conv.add_to_journel(Speaker::Bot, &output);

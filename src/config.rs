@@ -28,6 +28,9 @@ pub struct Config {
 
     #[serde(default)]
     pub telegram_id: Option<i64>,
+
+    #[serde(default = "default_bot_name")]
+    pub bot_name: String,
 }
 
 fn deault_debug() -> bool {
@@ -87,6 +90,10 @@ fn ensure_classify_model_files(model_name: &str) -> Result<(), ValidationError> 
     else {
         Ok(())
     }
+}
+
+fn default_bot_name() -> String {
+    "Holly".to_string()
 }
 
 #[derive(Debug, Deserialize, Validate, Clone)]

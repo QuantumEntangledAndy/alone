@@ -1,3 +1,11 @@
+#![deny(missing_docs)]
+//! Alone
+//!
+//! This is a program that creates a small
+//! chat bot using rust-bert.
+//! It uses telegram to send and recieve
+//! input but terminal input is ok too.
+
 use crossbeam::scope;
 
 use std::io;
@@ -13,6 +21,7 @@ use validator::Validate;
 use bus::{Bus, BusReader};
 use scopeguard::defer_on_unwind;
 use tokio::runtime::Runtime;
+use clap::Clap;
 
 mod conv;
 mod classy;
@@ -33,30 +42,53 @@ use self::telegram::start_telegram;
 
 const RX_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// Enum of applicable errors
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Occurs when the conversation is not found
+    /// in the conversation manager
     #[error(display = "Unknown Speaker")]
     ConversationUnknown,
+    /// Occurs when conversation model errors
+    /// during receiveing a users message
     #[error(display = "Can't Hear")]
     UnableToHear,
+    /// Occurs when the model errors when generating
+    /// reply
     #[error(display = "Can't Speak")]
     UnableToSpeak,
+    /// Occurs if the model fails to load the history
+    /// file
     #[error(display = "Can't remember what happened")]
     UnableToWriteJournel,
+    /// Occurs if the config file fails to validate
     #[error(display = "Config file invalid")]
     ValidationError(#[error(source)] validator::ValidationErrors),
+    /// Occurs if the config file fails to deseralise
     #[error(display = "Config syntax invalid")]
     ConfigError(#[error(source)] toml::de::Error),
+    /// Occurs if there is an io error during reading of
+    /// the config
     #[error(display = "Cannot read config")]
     IoError(#[error(source)] std::io::Error),
 }
 
-
-const BOT_NAME: &str = "Holly";
+#[derive(Clap)]
+#[clap(author, about, version)]
+struct Opts {
+    /// Set the location of the config file
+    ///
+    /// If the config file is not given then
+    /// it defaults to alone.toml in the cwd
+    #[clap(short = 'c', long = "config", default_value = "alone.toml")]
+    config: String,
+}
 
 
 fn main() -> Result<(), Error> {
-    let config: Config = toml::from_str(&std::fs::read_to_string("alone.toml")?)?;
+    let opts: Opts = Opts::parse();
+
+    let config: Config = toml::from_str(&std::fs::read_to_string(opts.config)?)?;
     config.validate()?;
 
     if config.debug {
@@ -66,7 +98,7 @@ fn main() -> Result<(), Error> {
     }
     pretty_env_logger::init();
 
-    info!("Finding {}", BOT_NAME);
+    info!("Finding {}", config.bot_name);
 
     let status_arc = Arc::new(Status::new());
 
@@ -117,6 +149,7 @@ fn main() -> Result<(), Error> {
         let ready_count = ready.clone();
         let telegram_token = config.telegram_token.clone();
         let telegram_id = config.telegram_id;
+        let bot_name = config.bot_name.clone();
         s.spawn(move |_| {
             if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
                 // Create the runtime
@@ -133,7 +166,7 @@ fn main() -> Result<(), Error> {
                     )
                 );
             } else {
-                console_input(&*status, &*ready_count, send_to_bot, get_from_bot, get_picture_from_bot);
+                console_input(&*status, &*ready_count, send_to_bot, get_from_bot, get_picture_from_bot, &bot_name);
             }
         });
     }).unwrap();
@@ -148,6 +181,7 @@ fn console_input(
     mut send_input: Bus<String>,
     mut get_from_bot: BusReader<String>,
     mut get_picture_from_bot: Option<BusReader<Option<PathBuf>>>,
+    bot_name: &str,
 ) {
     defer_on_unwind!{ status.stop(); }
     while ! ready_count.all_ready() && status.is_alive()  {
@@ -184,7 +218,7 @@ fn console_input(
             while status.is_alive() {
                 match get_from_bot.recv_timeout(RX_TIMEOUT) {
                     Ok(reply) => {
-                        println!("{}: {}", BOT_NAME, reply);
+                        println!("{}: {}", bot_name, reply);
                         break;
                     },
                     Err(RecvTimeoutError::Disconnected) => {
