@@ -163,6 +163,7 @@ fn main() -> Result<(), Error> {
                         get_picture_from_bot,
                         &*status,
                         &*ready_count,
+                        &bot_name,
                     )
                 );
             } else {

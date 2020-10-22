@@ -14,7 +14,6 @@ use telegram_bot::{Api, UpdateKind, UserId, Integer, MessageChat, MessageKind, I
 use log::*;
 
 use crate::RX_TIMEOUT;
-use crate::BOT_NAME;
 
 
 pub async fn start_telegram(
@@ -25,6 +24,7 @@ pub async fn start_telegram(
     mut get_picture_from_bot: Option<BusReader<Option<PathBuf>>>,
     status: &Status,
     ready_count: &Ready,
+    bot_name: &str,
 ) -> Result<(), TeleError> {
     defer_on_unwind!{ status.stop(); }
     while ! ready_count.all_ready() && status.is_alive()  {
@@ -97,7 +97,7 @@ pub async fn start_telegram(
                                 while status.is_alive() {
                                     match get_from_bot.recv_timeout(RX_TIMEOUT) {
                                         Ok(reply) => {
-                                            debug!("{}: {}", BOT_NAME, reply);
+                                            debug!("{}: {}", bot_name, reply);
                                             reply_message = Some(reply);
                                             break;
                                         },
