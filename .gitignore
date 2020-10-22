@@ -3,7 +3,7 @@ Cargo.lock
 *.history
 journal.toml
 *.model
-train/*/
+models/train/*/
 .DS_Store
 alone.toml
 wordimages.toml
