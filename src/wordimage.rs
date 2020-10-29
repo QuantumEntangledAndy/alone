@@ -1,7 +1,6 @@
 use crate::classy::Classy;
 use crate::config::{WordImagesConfig, WordImageData};
-use crate::ready::Ready;
-use crate::status::Status;
+use crate::appctl::AppCtl;
 use crate::RX_TIMEOUT;
 
 use std::path::PathBuf;
@@ -10,7 +9,6 @@ use std::sync::mpsc::RecvTimeoutError;
 
 use rand::seq::SliceRandom;
 use validator::Validate;
-use bus::{BusReader, Bus};
 use scopeguard::defer_on_unwind;
 
 use log::*;
@@ -25,6 +23,31 @@ impl WordImage {
         Self {
             classy: Classy::new(model_name),
             word_images: config.word_images.to_vec(),
+        }
+    }
+
+    pub fn new_from_path(model_name: &str, config_path: &str) -> Result<Self, String> {
+        match std::fs::read_to_string(config_path) {
+            Ok(config_str) => {
+                match toml::from_str::<WordImagesConfig>(&config_str) {
+                    Ok(word_config) => {
+                        match word_config.validate() {
+                            Ok(_) => {
+                                Ok(WordImage::new(model_name, &word_config))
+                            },
+                            Err(e) => {
+                                Err(format!("Wordimages: Error not valid WordImagesConfig: {}", e))
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        Err(format!("Wordimages: Error not valid toml: {}", e))
+                    }
+                }
+            }
+            Err(e) => {
+                Err(format!("Wordimages: Error file not readable: {}", e))
+            }
         }
     }
 
@@ -54,62 +77,68 @@ impl WordImage {
 
 
 pub fn start_wordimages(
-    status: &Status,
-    ready_count: &Ready,
+    appctl: &AppCtl,
     model_name: &str,
-    config_path: &str,
-    mut get_from_bot: BusReader<String>,
-    mut send_picture_to_me: Bus<Option<PathBuf>>
+    config_path: Option<String>,
 ) {
-    defer_on_unwind!{ status.stop() }
+    defer_on_unwind!{ appctl.stop() }
+    let mut get_from_bot = appctl.listen_bot_channel();
     debug!("Wordimages: Loading");
-    ready_count.not_ready("wordimage");
-    match std::fs::read_to_string(config_path) {
-        Ok(config_str) => {
-            match toml::from_str::<WordImagesConfig>(&config_str) {
-                Ok(word_config) => {
-                    match word_config.validate() {
-                        Ok(_) => {
-                            let wordy = WordImage::new(model_name, &word_config);
-                            debug!("Wordimages: Ready");
-                            ready_count.ready("wordimage");
 
-                            while status.is_alive() {
-                                match get_from_bot.recv_timeout(RX_TIMEOUT) {
-                                    Ok(input) => {
-                                        if status.images_enabled() {
-                                            send_picture_to_me.broadcast(wordy.get_image_path(&input));
-                                        } else {
-                                            send_picture_to_me.broadcast(None);
-                                        }
-                                    },
-                                    Err(RecvTimeoutError::Disconnected) => {
-                                        status.stop();
-                                        error!("Bot communication channel dropped.");
-                                        break;
-                                    }
-                                    Err(RecvTimeoutError::Timeout) => {
-                                        continue;
-                                    }
-                                }
-                            }
+    let mut wordy: Option<WordImage> = None;
 
-                            debug!("Wordimages: Shutting down");
-                        }
-                        Err(e) => {
-                            error!("Wordimages: Error not valid WordImagesConfig: {}", e);
-                        }
+    while appctl.is_alive() {
+        if appctl.images_enabled() && wordy.is_none() { // Only bother loading if enabled
+            if let Some(config_path) = &config_path {
+                match WordImage::new_from_path(model_name, &config_path) {
+                    Ok(new_wordy) => {
+                        wordy = Some(new_wordy);
                     }
-                },
-                Err(e) => {
-                    error!("Wordimages: Error not valid toml: {}", e);
+                    Err(error) => {
+                        error!("{}", error);
+                    }
                 }
             }
         }
-        Err(e) => {
-            error!("Wordimages: Error file not readable: {}", e);
+
+        if let Some(wordy) = &wordy { // Its been loaded
+            debug!("Wordimages: Ready");
+
+            match get_from_bot.recv_timeout(RX_TIMEOUT) { // Picture asked for
+                Ok(input) => {
+                    if appctl.images_enabled() { // Find and send it
+                        appctl.broadcast_bot_pic_channel(wordy.get_image_path(&input));
+                    } else { // But we have been turned off
+                        appctl.broadcast_bot_pic_channel(None);
+                    }
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    appctl.stop();
+                    error!("Bot communication channel dropped.");
+                    break;
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    continue;
+                }
+            }
+
+            debug!("Wordimages: Shutting down");
+        } else { // Never loaded
+            match get_from_bot.recv_timeout(RX_TIMEOUT) { // Picture asked for
+                Ok(_) => {
+                    appctl.broadcast_bot_pic_channel(None); // But we are not loaded
+                },
+                Err(RecvTimeoutError::Disconnected) => {
+                    appctl.stop();
+                    error!("Bot communication channel dropped.");
+                    break;
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    continue;
+                }
+            }
         }
     }
 
-    status.stop();
+    appctl.stop();
 }

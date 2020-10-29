@@ -9,15 +9,13 @@ use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Mutex, Arc};
 use scopeguard::defer_on_unwind;
 
-use bus::{Bus, BusReader};
 use serde::{Deserialize, Serialize};
 use inflector::cases::{sentencecase::{is_sentence_case, to_sentence_case}, snakecase::to_snake_case};
 
 use log::*;
 
 use crate::Error;
-use crate::ready::Ready;
-use crate::status::Status;
+use crate::appctl::AppCtl;
 use crate::RX_TIMEOUT;
 
 pub struct Conv {
@@ -245,25 +243,20 @@ impl Conv {
 
 
 pub fn start_conv(
-    status: &Status,
+    appctl: &AppCtl,
     model_name: &str,
     max_context: usize,
-    ready_count: &Ready,
-    mut get_from_me: BusReader<String>,
-    mut send_to_me: Bus<String>
 ) {
-    defer_on_unwind! { status.stop() }
+    defer_on_unwind! { appctl.stop() }
+    let mut get_from_me = appctl.listen_me_channel();
+
     debug!("Conversation model: Loading");
-    ready_count.not_ready("conv");
     let conv = Arc::new(Conv::new(&model_name, max_context));
     if conv.remember_past("./journal.toml").is_err() {
         error!("They couldn't remember the past.");
     }
 
-    debug!("Conversation model: Ready");
-    ready_count.ready("conv");
-
-    while status.is_alive() {
+    while appctl.is_alive() {
         match get_from_me.recv_timeout(RX_TIMEOUT) {
             Ok(input) => {
                  conv.add_to_journel(Speaker::Me, &input);
@@ -275,12 +268,12 @@ pub fn start_conv(
                      Err(_) => {}
                      Ok(output) => {
                          conv.add_to_journel(Speaker::Bot, &output);
-                         send_to_me.broadcast(output.to_string());
+                         appctl.broadcast_me_channel(&output);
                      }
                  }
             },
             Err(RecvTimeoutError::Disconnected) => {
-                status.stop();
+                appctl.stop();
                 error!("User communication channel dropped.");
                 break;
             }
@@ -293,5 +286,5 @@ pub fn start_conv(
     if conv.save_journal("./journal.toml").is_err() {
         error!("Failed to write journal.");
     }
-    status.stop();
+    appctl.stop();
 }
