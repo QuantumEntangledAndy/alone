@@ -131,7 +131,7 @@ fn main() -> Result<(), Error> {
         s.spawn(move |_| {
             if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
                 // Create the runtime
-                let mut rt = Runtime::new().unwrap();
+                let rt = Runtime::new().unwrap();
                 let _ = rt.block_on(
                     start_telegram(
                         &*appctl_arc,

@@ -12,7 +12,7 @@ futures = "*"
 clap = { git = "https://github.com/clap-rs/clap" }
 Inflector = "*"
 regex = "*"
-tokio = "*"
+tokio = { version = "^0.3.2", features = ["rt", "rt-multi-thread"] }
 telegram-bot = "*"
 bus = "*"
 rand = "*"
