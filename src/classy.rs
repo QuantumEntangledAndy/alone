@@ -46,7 +46,7 @@ impl Classy {
     pub fn classify(&self, input: &str) -> Option<Vec<Label>> {
         let candidate_labels = &["love", "hello", "location", "time", "sex"];
         self.model.predict_multilabel(
-            &[&input],
+            &[input],
             candidate_labels,
             None,
             128,
@@ -55,7 +55,7 @@ impl Classy {
 
     pub fn classify_with_lables(&self, input: &str, candidate_labels: &[&str]) -> Option<Vec<Label>> {
         self.model.predict_multilabel(
-            &[&input],
+            &[input],
             candidate_labels,
             None,
             128,

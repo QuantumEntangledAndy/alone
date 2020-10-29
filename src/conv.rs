@@ -154,7 +154,7 @@ impl Conv {
         let mut conversation_manager = self.manager.lock().unwrap();
         if let Some(mut convo) = conversation_manager.get(&self.uuid).as_mut() {
             self.trim_context(&mut convo);
-            if convo.add_user_input(&input).is_err() {
+            if convo.add_user_input(input).is_err() {
                 return Err(Error::UnableToSpeak);
             }
         } else {

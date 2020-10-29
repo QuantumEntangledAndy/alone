@@ -15,6 +15,6 @@ impl Enti {
     }
 
     pub fn entities(&self, input: &str) -> Option<Entity> {
-        self.model.predict(&[&input]).pop()
+        self.model.predict(&[input]).pop()
     }
 }
