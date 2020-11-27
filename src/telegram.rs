@@ -83,7 +83,7 @@ pub async fn start_telegram(
                                 n => {
                                     debug!("You: {}", n.to_string());
                                     {
-                                        appctl.broadcast_bot_channel(&n);
+                                        appctl.broadcast_me_channel(&n);
                                     }
                                     while appctl.is_alive() {
                                         match get_from_bot.recv_timeout(RX_TIMEOUT) {
