@@ -268,7 +268,7 @@ pub fn start_conv(
                      Err(_) => {}
                      Ok(output) => {
                          conv.add_to_journel(Speaker::Bot, &output);
-                         appctl.broadcast_me_channel(&output);
+                         appctl.broadcast_bot_channel(&output);
                      }
                  }
             },
