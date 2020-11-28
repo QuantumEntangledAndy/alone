@@ -52,7 +52,11 @@ pub async fn start_telegram(
             let (abort_handle, abort_registration) = AbortHandle::new_pair();
             appctl.add_abortable("telegram", abort_handle);
             let future = Abortable::new(stream.next(), abort_registration);
-            future.await
+            let result = future.await;
+            if let Err(e) = result {
+                error!("Telegram error: {:?}", e);
+            }
+            result
         } {
             // If the received update contains a new message...
             let update = update?;
