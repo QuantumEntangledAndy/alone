@@ -82,7 +82,7 @@ pub async fn start_telegram(
                                     reply_message = Some("Waiting for you to say something".to_string());
                                 },
                                 n if n.starts_with('/') => {
-                                    debug!("Got unknown command from telegram {}", n)
+                                    debug!("Got unknown command from telegram {}", n);
                                 }
                                 n => {
                                     debug!("You: {}", n.to_string());
