@@ -1,21 +1,26 @@
-use rust_bert::pipelines::conversation::{ConversationModel, ConversationManager, Conversation, ConversationConfig};
+use rust_bert::pipelines::conversation::{
+    Conversation, ConversationConfig, ConversationManager, ConversationModel,
+};
 use rust_bert::resources::{LocalResource, Resource};
-use tch::{Device};
+use tch::Device;
 use uuid::Uuid;
 
-use std::fs;
-use std::path::{PathBuf};
-use std::sync::mpsc::RecvTimeoutError;
-use std::sync::{Mutex, Arc};
 use scopeguard::defer_on_unwind;
+use std::fs;
+use std::path::PathBuf;
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::{Arc, Mutex};
 
+use inflector::cases::{
+    sentencecase::{is_sentence_case, to_sentence_case},
+    snakecase::to_snake_case,
+};
 use serde::{Deserialize, Serialize};
-use inflector::cases::{sentencecase::{is_sentence_case, to_sentence_case}, snakecase::to_snake_case};
 
 use log::*;
 
-use crate::Error;
 use crate::appctl::AppCtl;
+use crate::Error;
 use crate::RX_TIMEOUT;
 
 pub struct Conv {
@@ -45,7 +50,6 @@ pub struct History {
     history: Vec<Past>,
 }
 
-
 impl Conv {
     pub fn new(model_name: &str, max_context: usize) -> Self {
         let mut conversation_config;
@@ -54,10 +58,18 @@ impl Conv {
             conversation_config.min_length = 2;
         } else {
             conversation_config = ConversationConfig {
-                model_resource: Resource::Local(LocalResource{local_path: PathBuf::from(format!("./{}.model/model.ot", model_name))}),
-                config_resource: Resource::Local(LocalResource{local_path: PathBuf::from(format!("./{}.model/config.json", model_name))}),
-                vocab_resource: Resource::Local(LocalResource{local_path: PathBuf::from(format!("./{}.model/vocab.json", model_name))}),
-                merges_resource: Resource::Local(LocalResource{local_path: PathBuf::from(format!("./{}.model/merges.txt", model_name))}),
+                model_resource: Resource::Local(LocalResource {
+                    local_path: PathBuf::from(format!("./{}.model/model.ot", model_name)),
+                }),
+                config_resource: Resource::Local(LocalResource {
+                    local_path: PathBuf::from(format!("./{}.model/config.json", model_name)),
+                }),
+                vocab_resource: Resource::Local(LocalResource {
+                    local_path: PathBuf::from(format!("./{}.model/vocab.json", model_name)),
+                }),
+                merges_resource: Resource::Local(LocalResource {
+                    local_path: PathBuf::from(format!("./{}.model/merges.txt", model_name)),
+                }),
                 min_length: 2,
                 max_length: 100,
                 min_length_for_response: 32,
@@ -75,18 +87,19 @@ impl Conv {
             };
         }
 
-        let conversation_model = ConversationModel::new(conversation_config).expect("Unable to setup model");
+        let conversation_model =
+            ConversationModel::new(conversation_config).expect("Unable to setup model");
 
         let conversation = Conversation::new_empty();
 
         let mut conversation_manager = ConversationManager::new();
         let conversation_uuid = conversation_manager.add(conversation);
 
-        Self{
+        Self {
             model: conversation_model,
             manager: Mutex::new(conversation_manager),
             uuid: conversation_uuid,
-            past: Mutex::new(vec!()),
+            past: Mutex::new(vec![]),
             max_context,
             history: Mutex::new(Default::default()),
         }
@@ -99,7 +112,8 @@ impl Conv {
             "".to_string()
         });
 
-        let mut history_file: History = toml::from_str(&user_past_str).expect("Couldn't load history.");
+        let mut history_file: History =
+            toml::from_str(&user_past_str).expect("Couldn't load history.");
 
         let mut conversation_manager = self.manager.lock().unwrap();
         if let Some(conversation) = conversation_manager.get(&self.uuid).as_mut() {
@@ -109,7 +123,7 @@ impl Conv {
                 match past.speaker {
                     Speaker::Me => {
                         conversation.past_user_inputs.push(past.message.clone());
-                    },
+                    }
                     Speaker::Bot => {
                         conversation.generated_responses.push(past.message.clone());
                     }
@@ -118,9 +132,12 @@ impl Conv {
             }
             (*my_history).sort_unstable_by_key(|k| k.id);
             let history_texts: Vec<&str>;
-            if self.max_context > 0 && (*my_history).len() > self.max_context*2 {
-                let max_range = std::cmp::min(self.max_context*2, (*my_history).len()-1);
-                history_texts = (*my_history)[0..max_range].iter().map(|k| k.message.as_str()).collect();
+            if self.max_context > 0 && (*my_history).len() > self.max_context * 2 {
+                let max_range = std::cmp::min(self.max_context * 2, (*my_history).len() - 1);
+                history_texts = (*my_history)[0..max_range]
+                    .iter()
+                    .map(|k| k.message.as_str())
+                    .collect();
             } else {
                 history_texts = (*my_history).iter().map(|k| k.message.as_str()).collect();
             }
@@ -140,13 +157,11 @@ impl Conv {
         } else {
             new_id = 0
         }
-        (*my_history).push(
-            Past{
-                speaker,
-                id: new_id,
-                message: message.to_string()
-            }
-        )
+        (*my_history).push(Past {
+            speaker,
+            id: new_id,
+            message: message.to_string(),
+        })
     }
 
     pub fn say(&self, input: &str) -> Result<String, Error> {
@@ -154,6 +169,8 @@ impl Conv {
         let mut conversation_manager = self.manager.lock().unwrap();
         if let Some(mut convo) = conversation_manager.get(&self.uuid).as_mut() {
             self.trim_context(&mut convo);
+            //let input = Self::swap_persons(input);
+            //trace!("  Persons swapped: {}", input);
             if convo.add_user_input(input).is_err() {
                 return Err(Error::UnableToSpeak);
             }
@@ -188,7 +205,8 @@ impl Conv {
                 convo.generated_responses.drain(0..drain_amount);
                 trace!("New GenResp len: {:?}", convo.generated_responses.len());
             }
-            let expected_history_size = convo.generated_responses.len() + convo.past_user_inputs.len();
+            let expected_history_size =
+                convo.generated_responses.len() + convo.past_user_inputs.len();
             if convo.history.len() > expected_history_size {
                 trace!("Old Hist len: {:?}", convo.generated_responses.len());
                 let drain_amount = convo.history.len() - expected_history_size;
@@ -202,10 +220,13 @@ impl Conv {
         let my_history = self.history.lock().unwrap();
         if std::fs::write(
             &file_path,
-            toml::to_vec(&History{
+            toml::to_vec(&History {
                 history: (*my_history).clone(),
-            }).unwrap(),
-        ).is_err() {
+            })
+            .unwrap(),
+        )
+        .is_err()
+        {
             Err(Error::UnableToWriteJournel)
         } else {
             Ok(())
@@ -216,22 +237,31 @@ impl Conv {
     fn swap_persons(input: &str) -> String {
         let mut words = vec![];
         for word in input.split(' ').filter(|i| !i.is_empty()) {
-            let mut new_word = match to_snake_case(&word).as_str() {
-                "you're" => "I'm",
-                "youre" => "I'm",
-                "you" => "I",
-                "your" => "my",
-                "yours" => "mine",
-                "yourself" => "myself",
-                "i'm" => "you're",
-                "i" => "you",
-                "my" => "your",
+            let pass_one = match to_snake_case(&word).as_str() {
+                "i" => "You",
                 "me" => "you",
                 "mine" => "yours",
+                "my" => "your",
                 "myself" => "yourself",
+                "you" => "I",
+                "yours" => "mine",
+                "your" => "my",
+                "yourself" => "myself",
+                "am" => "are",
+                "are" => "am",
+                "i\'m" => "You're",
+                "you\'re" => "I'm",
                 n => n,
-            }.to_string();
-            if is_sentence_case(&word) {
+            }
+            .to_string();
+            let mut new_word = match word {
+                "You" => "I",
+                "you" => "me",
+                _ => pass_one.as_str(),
+            }
+            .to_string();
+
+            if is_sentence_case(&word) && !is_sentence_case(&new_word) {
                 new_word = to_sentence_case(&new_word);
             }
             words.push(new_word);
@@ -241,12 +271,7 @@ impl Conv {
     }
 }
 
-
-pub fn start_conv(
-    appctl: &AppCtl,
-    model_name: &str,
-    max_context: usize,
-) {
+pub fn start_conv(appctl: &AppCtl, model_name: &str, max_context: usize) {
     defer_on_unwind! { appctl.stop() }
     let mut get_from_me = appctl.listen_me_channel();
 
@@ -259,19 +284,19 @@ pub fn start_conv(
     while appctl.is_alive() {
         match get_from_me.recv_timeout(RX_TIMEOUT) {
             Ok(input) => {
-                 conv.add_to_journel(Speaker::Me, &input);
+                conv.add_to_journel(Speaker::Me, &input);
 
-                 match conv.say(&input) {
-                     Err(Error::UnableToHear) => error!("Couldn't hear you"),
-                     Err(Error::UnableToSpeak) => error!("Couldn't speak to you"),
-                     Err(Error::ConversationUnknown) => error!("Doesn't know you"),
-                     Err(_) => {}
-                     Ok(output) => {
-                         conv.add_to_journel(Speaker::Bot, &output);
-                         appctl.broadcast_bot_channel(&output);
-                     }
-                 }
-            },
+                match conv.say(&input) {
+                    Err(Error::UnableToHear) => error!("Couldn't hear you"),
+                    Err(Error::UnableToSpeak) => error!("Couldn't speak to you"),
+                    Err(Error::ConversationUnknown) => error!("Doesn't know you"),
+                    Err(_) => {}
+                    Ok(output) => {
+                        conv.add_to_journel(Speaker::Bot, &output);
+                        appctl.broadcast_bot_channel(&output);
+                    }
+                }
+            }
             Err(RecvTimeoutError::Disconnected) => {
                 appctl.stop();
                 error!("User communication channel dropped.");
