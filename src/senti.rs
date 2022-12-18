@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use rust_bert::pipelines::sentiment::{SentimentModel, Sentiment};
+use rust_bert::pipelines::sentiment::{Sentiment, SentimentModel};
 
 pub struct Senti {
     model: SentimentModel,
@@ -7,14 +7,15 @@ pub struct Senti {
 
 impl Senti {
     pub fn new() -> Self {
-        let sentiment_model = SentimentModel::new(Default::default()).expect("Unable to setup model");
+        let sentiment_model =
+            SentimentModel::new(Default::default()).expect("Unable to setup model");
 
-        Self{
+        Self {
             model: sentiment_model,
         }
     }
 
     pub fn sentimentice(&self, input: &str) -> Option<Sentiment> {
-        self.model.predict(&[input]).pop()
+        self.model.predict([input]).pop()
     }
 }

@@ -1,8 +1,8 @@
+use rust_bert::pipelines::common::ModelType;
 use rust_bert::pipelines::conversation::{
     Conversation, ConversationConfig, ConversationManager, ConversationModel,
 };
-use rust_bert::resources::{LocalResource, Resource};
-use tch::Device;
+use rust_bert::resources::LocalResource;
 use uuid::Uuid;
 
 use scopeguard::defer_on_unwind;
@@ -58,16 +58,17 @@ impl Conv {
             conversation_config.min_length = 2;
         } else {
             conversation_config = ConversationConfig {
-                model_resource: Resource::Local(LocalResource {
+                model_type: ModelType::GPT2,
+                model_resource: Box::new(LocalResource {
                     local_path: PathBuf::from(format!("./{}.model/model.ot", model_name)),
                 }),
-                config_resource: Resource::Local(LocalResource {
+                config_resource: Box::new(LocalResource {
                     local_path: PathBuf::from(format!("./{}.model/config.json", model_name)),
                 }),
-                vocab_resource: Resource::Local(LocalResource {
+                vocab_resource: Box::new(LocalResource {
                     local_path: PathBuf::from(format!("./{}.model/vocab.json", model_name)),
                 }),
-                merges_resource: Resource::Local(LocalResource {
+                merges_resource: Box::new(LocalResource {
                     local_path: PathBuf::from(format!("./{}.model/merges.txt", model_name)),
                 }),
                 min_length: 2,
@@ -83,7 +84,9 @@ impl Conv {
                 length_penalty: 1.0,
                 no_repeat_ngram_size: 0,
                 num_return_sequences: 1,
-                device: Device::cuda_if_available(),
+                diversity_penalty: None,
+                num_beam_groups: None,
+                ..Default::default()
             };
         }
 
@@ -131,18 +134,18 @@ impl Conv {
                 (*my_history).push(past.clone());
             }
             (*my_history).sort_unstable_by_key(|k| k.id);
-            let history_texts: Vec<&str>;
-            if self.max_context > 0 && (*my_history).len() > self.max_context * 2 {
-                let max_range = std::cmp::min(self.max_context * 2, (*my_history).len() - 1);
-                history_texts = (*my_history)[0..max_range]
-                    .iter()
-                    .map(|k| k.message.as_str())
-                    .collect();
-            } else {
-                history_texts = (*my_history).iter().map(|k| k.message.as_str()).collect();
-            }
+            let history_texts: Vec<&str> =
+                if self.max_context > 0 && (*my_history).len() > self.max_context * 2 {
+                    let max_range = std::cmp::min(self.max_context * 2, (*my_history).len() - 1);
+                    (*my_history)[0..max_range]
+                        .iter()
+                        .map(|k| k.message.as_str())
+                        .collect()
+                } else {
+                    (*my_history).iter().map(|k| k.message.as_str()).collect()
+                };
             let history_ids = self.model.encode_prompts(&history_texts);
-            conversation.load_from_history(history_texts, history_ids);
+            conversation.load_from_history(&history_texts, &history_ids);
             Ok(())
         } else {
             Err(Error::ConversationUnknown)
@@ -167,8 +170,8 @@ impl Conv {
     pub fn say(&self, input: &str) -> Result<String, Error> {
         trace!("  Conv recieved: {}", input);
         let mut conversation_manager = self.manager.lock().unwrap();
-        if let Some(mut convo) = conversation_manager.get(&self.uuid).as_mut() {
-            self.trim_context(&mut convo);
+        if let Some(convo) = conversation_manager.get(&self.uuid).as_mut() {
+            self.trim_context(convo);
             //let input = Self::swap_persons(input);
             //trace!("  Persons swapped: {}", input);
             if convo.add_user_input(input).is_err() {
@@ -219,7 +222,7 @@ impl Conv {
     pub fn save_journal(&self, file_path: &str) -> Result<(), Error> {
         let my_history = self.history.lock().unwrap();
         if std::fs::write(
-            &file_path,
+            file_path,
             toml::to_vec(&History {
                 history: (*my_history).clone(),
             })
@@ -237,7 +240,7 @@ impl Conv {
     fn swap_persons(input: &str) -> String {
         let mut words = vec![];
         for word in input.split(' ').filter(|i| !i.is_empty()) {
-            let pass_one = match to_snake_case(&word).as_str() {
+            let pass_one = match to_snake_case(word).as_str() {
                 "i" => "You",
                 "me" => "you",
                 "mine" => "yours",
@@ -261,7 +264,7 @@ impl Conv {
             }
             .to_string();
 
-            if is_sentence_case(&word) && !is_sentence_case(&new_word) {
+            if is_sentence_case(word) && !is_sentence_case(&new_word) {
                 new_word = to_sentence_case(&new_word);
             }
             words.push(new_word);
@@ -276,7 +279,7 @@ pub fn start_conv(appctl: &AppCtl, model_name: &str, max_context: usize) {
     let mut get_from_me = appctl.listen_me_channel();
 
     debug!("Conversation model: Loading");
-    let conv = Arc::new(Conv::new(&model_name, max_context));
+    let conv = Arc::new(Conv::new(model_name, max_context));
     if conv.remember_past("./journal.toml").is_err() {
         error!("They couldn't remember the past.");
     }

@@ -32,15 +32,15 @@ pub async fn start_telegram(
 
         fn get_reply_keyboard(status: &AppCtl) -> ReplyKeyboardMarkup {
             if status.images_enabled() {
-                return reply_markup!(reply_keyboard, selective,
+                reply_markup!(reply_keyboard, selective,
                      ["/stop"],
                      ["/noimages"]
-                );
+                )
             } else {
-                return reply_markup!(reply_keyboard, selective,
+                reply_markup!(reply_keyboard, selective,
                      ["/stop"],
                      ["/yesimages"]
-                );
+                )
             }
         }
 
@@ -87,7 +87,7 @@ pub async fn start_telegram(
                                 n => {
                                     debug!("You: {}", n.to_string());
                                     {
-                                        appctl.broadcast_me_channel(&n);
+                                        appctl.broadcast_me_channel(n);
                                     }
                                     while appctl.is_alive() {
                                         match get_from_bot.recv_timeout(RX_TIMEOUT) {
@@ -132,18 +132,18 @@ pub async fn start_telegram(
                                 match (reply_message, reply_pic) {
                                     (Some(reply), Some(pic)) => {
                                         let mut send_this = message.photo_reply(InputFileUpload::with_path(pic));
-                                        send_this.reply_markup(get_reply_keyboard(&appctl));
+                                        send_this.reply_markup(get_reply_keyboard(appctl));
                                         send_this.caption(reply);
                                         api.send(send_this).await?;
                                     },
                                     (Some(reply), None) => {
                                         let mut send_this = message.text_reply(reply);
-                                        send_this.reply_markup(get_reply_keyboard(&appctl));
+                                        send_this.reply_markup(get_reply_keyboard(appctl));
                                         api.send(send_this).await?;
                                     },
                                     (None, Some(pic)) => {
                                         let mut send_this = message.photo_reply(InputFileUpload::with_path(pic));
-                                        send_this.reply_markup(get_reply_keyboard(&appctl));
+                                        send_this.reply_markup(get_reply_keyboard(appctl));
                                         api.send(send_this).await?;
                                     },
                                     (None, None) => {

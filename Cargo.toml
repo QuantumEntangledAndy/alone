@@ -8,32 +8,33 @@ default-run = "alone"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-futures = "^0.3.5"
-clap = { git = "https://github.com/clap-rs/clap" }
-Inflector = "^0.11.4"
-regex = "^1.4.1"
+futures = "0.3.25"
+Inflector = "0.11.4"
+regex = "1.7.0"
 tokio = { version = "^0.2" }
-telegram-bot = "^0.7.0"
-bus = "^2.2.3"
-rand = "^0.6.5"
-ctrlc = "^3.1.6"
-log =  "^0.3.9"
-err-derive = "^0.2.4"
-pretty_env_logger = "^0.4.0"
-# rust-bert = { git = "https://github.com/guillaume-be/rust-bert", branch = "fix_greedy_generation" }
-rust-bert = { path = "/Users/awk21/Projects/Software/rust-bert", version="*" }
-tch = "^0.2.1"
-toml = "^0.5.7"
-uuid = { version = "^0.8.1", features = ["v4"] }
-crossbeam = "^0.7.3"
-serde = { version = "^1.0.117", features = ["derive"] }
-crossbeam-channel = "^0.4.4"
-validator = "^0.11.0"
-validator_derive = "^0.11.0"
-scopeguard = "^1.1.0"
+telegram-bot = "0.8.0"
+bus = "2.3.0"
+rand = "0.8.5"
+ctrlc = "3.2.4"
+log = "0.4.17"
+err-derive = "0.3.1"
+pretty_env_logger = "0.4.0"
+# rust-bert = { git = "https://github.com/guillaume-be/rust-bert" }
+# rust-bert = { path = "/Users/awk21/Projects/Software/rust-bert", version="*" }
+toml = "0.5.10"
+uuid = { version = "1.2.2", features = ["v4"] }
+crossbeam = "0.8.2"
+serde = { version = "1.0.151", features = ["derive"] }
+crossbeam-channel = "0.5.6"
+validator = "0.16.0"
+validator_derive = "0.16.0"
+scopeguard = "1.1.0"
+#tch = "^0.10.0"
+rust-bert = "0.19.0"
+clap = { version = "4.0.29", features = ["derive"] }
 
 [dev-dependencies]
-anyhow = "^1.0.33"
+anyhow = "1.0.67"
 
 [[bin]]
 name = "alone"

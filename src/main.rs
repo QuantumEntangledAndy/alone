@@ -10,31 +10,31 @@ use crossbeam::scope;
 
 use std::io;
 use std::io::prelude::*;
-use std::sync::{Arc};
-use std::time::Duration;
 use std::sync::mpsc::RecvTimeoutError;
+use std::sync::Arc;
+use std::time::Duration;
 
-use log::*;
+use clap::Parser;
 use err_derive::Error;
-use validator::Validate;
+use log::*;
 use scopeguard::defer_on_unwind;
 use tokio::runtime::Runtime;
-use clap::Clap;
+use validator::Validate;
 
-mod conv;
-mod classy;
-mod senti;
-mod enti;
-mod config;
-mod wordimage;
 mod appctl;
+mod classy;
+mod config;
+mod conv;
+mod enti;
+mod senti;
 mod telegram;
+mod wordimage;
 
-use self::conv::{start_conv};
-use self::config::{Config};
-use self::wordimage::{start_wordimages};
 use self::appctl::AppCtl;
+use self::config::Config;
+use self::conv::start_conv;
 use self::telegram::start_telegram;
+use self::wordimage::start_wordimages;
 
 const RX_TIMEOUT: Duration = Duration::from_millis(500);
 
@@ -69,8 +69,8 @@ pub enum Error {
     IoError(#[error(source)] std::io::Error),
 }
 
-#[derive(Clap)]
-#[clap(author, about, version)]
+#[derive(Parser)]
+#[command(author, about, version)]
 struct Opts {
     /// Set the location of the config file
     ///
@@ -79,7 +79,6 @@ struct Opts {
     #[clap(short = 'c', long = "config", default_value = "alone.toml")]
     config: String,
 }
-
 
 fn main() -> Result<(), Error> {
     let opts: Opts = Opts::parse();
@@ -101,7 +100,7 @@ fn main() -> Result<(), Error> {
     debug!("Setting up stop signals");
     let appctl_arc = appctl.clone();
     ctrlc::set_handler(move || {
-        if ! appctl_arc.is_alive() {
+        if !appctl_arc.is_alive() {
             std::process::exit(1);
         } else {
             appctl_arc.stop();
@@ -114,14 +113,14 @@ fn main() -> Result<(), Error> {
         let model_name = config.model_name.clone();
         let max_context = config.max_context;
         s.spawn(move |_| {
-            start_conv(&*appctl_arc, &model_name, max_context);
+            start_conv(&appctl_arc, &model_name, max_context);
         });
 
         let appctl_arc = appctl.clone();
         let model_name = config.classify_model_name.clone();
         let word_images = config.word_images.clone();
         s.spawn(move |_| {
-            start_wordimages(&*appctl_arc, &model_name, word_images);
+            start_wordimages(&appctl_arc, &model_name, word_images);
         });
 
         let appctl_arc = appctl.clone();
@@ -132,29 +131,19 @@ fn main() -> Result<(), Error> {
             if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
                 // Create the runtime
                 let mut rt = Runtime::new().unwrap();
-                let _ = rt.block_on(
-                    start_telegram(
-                        &*appctl_arc,
-                        &token,
-                        id,
-                        &bot_name,
-                    )
-                );
+                let _ = rt.block_on(start_telegram(&appctl_arc, &token, id, &bot_name));
             } else {
-                console_input(&*appctl_arc, &bot_name);
+                console_input(&appctl_arc, &bot_name);
             }
         });
-    }).unwrap();
+    })
+    .unwrap();
 
     Ok(())
-
 }
 
-fn console_input(
-    appctl: &AppCtl,
-    bot_name: &str,
-) {
-    defer_on_unwind!{ appctl.stop(); }
+fn console_input(appctl: &AppCtl, bot_name: &str) {
+    defer_on_unwind! { appctl.stop(); }
     let mut get_from_bot = appctl.listen_bot_channel();
     let mut get_picture_from_bot = appctl.listen_bot_pic_channel();
 
@@ -168,20 +157,20 @@ fn console_input(
         'outer: while appctl.is_alive() {
             let buffer = write_stdin.fill_buf().unwrap();
             for (i, byte) in buffer.iter().enumerate() {
-                if byte == &(0x0A as u8) {
+                if byte == &0x0A {
                     input = String::from_utf8_lossy(&buffer[0..i]).into_owned();
-                    write_stdin.consume(i+1);
+                    write_stdin.consume(i + 1);
                     break 'outer;
                 }
             }
         }
-        if ! appctl.is_alive() {
+        if !appctl.is_alive() {
             break; // Early exit
         }
         if input.len() > 1 {
             let input = match input.chars().last().unwrap() {
-                '!'|'.'|'?' => input.trim().to_string(),
-                _ => format!("{}.", input.trim().to_string()),
+                '!' | '.' | '?' => input.trim().to_string(),
+                _ => format!("{}.", input.trim()),
             };
 
             appctl.broadcast_me_channel(&input);
@@ -190,7 +179,7 @@ fn console_input(
                     Ok(reply) => {
                         println!("{}: {}", bot_name, reply);
                         break;
-                    },
+                    }
                     Err(RecvTimeoutError::Disconnected) => {
                         appctl.stop();
                         error!("Bot communication channel dropped.");
@@ -205,14 +194,20 @@ fn console_input(
                 match get_picture_from_bot.recv_timeout(RX_TIMEOUT) {
                     Ok(image_path) => {
                         if let Some(image_path) = image_path {
-                            if let Ok(output) = std::process::Command::new("imgcat").args(&[&image_path]).output() {
-                                println!("{}", String::from_utf8_lossy(&output.stdout).into_owned());
+                            if let Ok(output) = std::process::Command::new("imgcat")
+                                .args([&image_path])
+                                .output()
+                            {
+                                println!(
+                                    "{}",
+                                    String::from_utf8_lossy(&output.stdout).into_owned()
+                                );
                             } else {
                                 error!("Failed to show imgcat for {:?}", image_path);
                             }
                         }
                         break;
-                    },
+                    }
                     Err(RecvTimeoutError::Disconnected) => {
                         appctl.stop();
                         error!("Bot pic communication channel dropped.");

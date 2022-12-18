@@ -1,6 +1,6 @@
 use serde::Deserialize;
 #[allow(unused_imports)] // Validate is required in the arm build but not the amd.
-use validator::{ValidationError, Validate};
+use validator::{Validate, ValidationError};
 use validator_derive::Validate;
 
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ pub struct Config {
     #[serde(default = "default_max_context")]
     pub max_context: usize,
 
-    #[serde(default = "deault_debug")]
+    #[serde(default = "default_debug")]
     pub debug: bool,
 
     #[serde(default)]
@@ -33,7 +33,7 @@ pub struct Config {
     pub bot_name: String,
 }
 
-fn deault_debug() -> bool {
+fn default_debug() -> bool {
     false
 }
 
@@ -52,17 +52,13 @@ fn ensure_word_images(word_images: &str) -> Result<(), ValidationError> {
 fn ensure_model_files(model_name: &str) -> Result<(), ValidationError> {
     if model_name == "default" {
         Ok(())
-    }
-    else if ! PathBuf::from(format!("./{}.model/model.ot", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/model.ot", model_name)).exists() {
         Err(ValidationError::new("Rust model missing"))
-    }
-    else if ! PathBuf::from(format!("./{}.model/config.json", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/config.json", model_name)).exists() {
         Err(ValidationError::new("Config model missing"))
-    }
-    else if ! PathBuf::from(format!("./{}.model/vocab.json", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/vocab.json", model_name)).exists() {
         Err(ValidationError::new("Vocab model missing"))
-    }
-    else if ! PathBuf::from(format!("./{}.model/merges.txt", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/merges.txt", model_name)).exists() {
         Err(ValidationError::new("Merges model missing"))
     } else {
         Ok(())
@@ -73,14 +69,11 @@ fn ensure_classify_model_files(model_name: &str) -> Result<(), ValidationError> 
     #[allow(clippy::suspicious_else_formatting)]
     if model_name == "default" {
         Ok(())
-    }
-    else if ! PathBuf::from(format!("./{}.model/model.ot", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/model.ot", model_name)).exists() {
         Err(ValidationError::new("Rust model missing"))
-    }
-    else if ! PathBuf::from(format!("./{}.model/config.json", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/config.json", model_name)).exists() {
         Err(ValidationError::new("Config model missing"))
-    }
-    else if ! PathBuf::from(format!("./{}.model/vocab.json", model_name)).exists() {
+    } else if !PathBuf::from(format!("./{}.model/vocab.json", model_name)).exists() {
         Err(ValidationError::new("Vocab model missing"))
     }
     /* Optional
