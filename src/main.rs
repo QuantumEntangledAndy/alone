@@ -27,6 +27,7 @@ mod config;
 mod conv;
 mod enti;
 mod senti;
+mod sumi;
 mod telegram;
 mod wordimage;
 
@@ -78,12 +79,19 @@ struct Opts {
     /// it defaults to alone.toml in the cwd
     #[clap(short = 'c', long = "config", default_value = "alone.toml")]
     config: String,
+    /// Force the usage of the terminal
+    ///
+    /// By default the app will use telegram if
+    /// the IDs are given. This forces the use of
+    /// the terminal even if the IDs are given
+    #[clap(short = 't', long = "terminal")]
+    force_terminal: bool,
 }
 
 fn main() -> Result<(), Error> {
     let opts: Opts = Opts::parse();
 
-    let config: Config = toml::from_str(&std::fs::read_to_string(opts.config)?)?;
+    let config: Config = toml::from_str(&std::fs::read_to_string(&opts.config)?)?;
     config.validate()?;
 
     if config.debug {
@@ -127,13 +135,14 @@ fn main() -> Result<(), Error> {
         let telegram_token = config.telegram_token.clone();
         let telegram_id = config.telegram_id;
         let bot_name = config.bot_name.clone();
+        let force_terminal = opts.force_terminal;
         s.spawn(move |_| {
-            if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
+            if force_terminal || telegram_token.is_none() || telegram_id.is_none() {
+                console_input(&appctl_arc, &bot_name);
+            } else if let (Some(token), Some(id)) = (telegram_token, telegram_id) {
                 // Create the runtime
                 let mut rt = Runtime::new().unwrap();
                 let _ = rt.block_on(start_telegram(&appctl_arc, &token, id, &bot_name));
-            } else {
-                console_input(&appctl_arc, &bot_name);
             }
         });
     })
