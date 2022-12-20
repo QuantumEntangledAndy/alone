@@ -12,6 +12,12 @@ use log::*;
 
 use crate::RX_TIMEOUT;
 
+enum TeleCommand {
+    Images(bool),
+    Shutdown,
+    None,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn start_telegram(
     appctl: &AppCtl,
@@ -60,6 +66,7 @@ pub async fn start_telegram(
         } {
             // If the received update contains a new message...
             let update = update?;
+            let mut command = TeleCommand::None;
             if let UpdateKind::Message(message) = update.kind {
                 if let MessageChat::Private(user) = &message.chat  {
                     if user.id == UserId::new(id as Integer) && message.reply_to_message.is_none() {
@@ -69,14 +76,16 @@ pub async fn start_telegram(
                             let mut reply_pic = None;
                             match data.trim() {
                                 "/noimages" => {
-                                    appctl.enable_images(false);
+                                    reply_message = Some("...Images Off...".to_string());
+                                    command = TeleCommand::Images(false);
                                 },
                                 "/yesimages" => {
-                                    appctl.enable_images(true);
+                                    reply_message = Some("...Images On...".to_string());
+                                    command = TeleCommand::Images(true);
                                 },
                                 "/stop" => {
-                                    appctl.stop();
-                                    break;
+                                    reply_message = Some("...Leaving...".to_string());
+                                    command = TeleCommand::Shutdown;
                                 },
                                 "/start" => {
                                     reply_message = Some("Waiting for you to say something".to_string());
@@ -148,6 +157,16 @@ pub async fn start_telegram(
                                     },
                                     (None, None) => {
                                     }
+                                }
+                            }
+                            match command {
+                                TeleCommand::None => {},
+                                TeleCommand::Images(yes) => {
+                                    appctl.enable_images(yes);
+                                },
+                                TeleCommand::Shutdown => {
+                                    appctl.stop();
+                                    break;
                                 }
                             }
                         }
