@@ -120,8 +120,9 @@ fn main() -> Result<(), Error> {
         let appctl_arc = appctl.clone();
         let model_name = config.model_name.clone();
         let max_context = config.max_context;
+        let do_summary = config.do_summary;
         s.spawn(move |_| {
-            start_conv(&appctl_arc, &model_name, max_context);
+            start_conv(&appctl_arc, &model_name, max_context, do_summary);
         });
 
         let appctl_arc = appctl.clone();

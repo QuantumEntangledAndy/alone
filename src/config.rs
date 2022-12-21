@@ -31,6 +31,13 @@ pub struct Config {
 
     #[serde(default = "default_bot_name")]
     pub bot_name: String,
+
+    #[serde(default = "default_summary")]
+    pub do_summary: bool,
+}
+
+fn default_summary() -> bool {
+    false
 }
 
 fn default_debug() -> bool {

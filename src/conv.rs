@@ -328,12 +328,15 @@ impl Conv {
     }
 }
 
-pub fn start_conv(appctl: &AppCtl, model_name: &str, max_context: usize) {
+pub fn start_conv(appctl: &AppCtl, model_name: &str, max_context: usize, do_summary: bool) {
     defer_on_unwind! { appctl.stop() }
     let mut get_from_me = appctl.listen_me_channel();
 
     debug!("Conversation model: Loading");
-    let conv = Arc::new(Conv::new(model_name, max_context));
+    let mut conv_prep = Conv::new(model_name, max_context);
+    conv_prep.do_summary = do_summary;
+
+    let conv = Arc::new(conv_prep);
     if conv.remember_past("./journal.toml").is_err() {
         error!("They couldn't remember the past.");
     }
