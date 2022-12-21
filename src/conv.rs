@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use log::*;
 
 use crate::appctl::AppCtl;
+use crate::sumi::Sumi;
 use crate::Error;
 use crate::RX_TIMEOUT;
 
@@ -30,6 +31,7 @@ pub struct Conv {
     past: Mutex<Vec<String>>,
     max_context: usize,
     history: Mutex<Vec<Past>>,
+    do_summary: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Copy)]
@@ -105,6 +107,7 @@ impl Conv {
             past: Mutex::new(vec![]),
             max_context,
             history: Mutex::new(Default::default()),
+            do_summary: false,
         }
     }
 
@@ -121,6 +124,57 @@ impl Conv {
         let mut conversation_manager = self.manager.lock().unwrap();
         if let Some(conversation) = conversation_manager.get(&self.uuid).as_mut() {
             history_file.history.sort_unstable_by_key(|k| k.id);
+
+            if self.do_summary {
+                let sumi = Sumi::new();
+                let all_me_messages: Vec<String> = history_file
+                    .history
+                    .iter()
+                    .flat_map(|m| match m.speaker {
+                        Speaker::Me => Some(m.message.clone()),
+                        _ => None,
+                    })
+                    .collect();
+
+                let msg_start = std::cmp::max(all_me_messages.len() - 50, 0);
+                info!(
+                    "Summary Me: {}",
+                    sumi.summary(&all_me_messages[msg_start..].join("\n"))
+                        .unwrap()
+                );
+
+                let all_bot_messages: Vec<String> = history_file
+                    .history
+                    .iter()
+                    .flat_map(|m| match m.speaker {
+                        Speaker::Bot => Some(m.message.clone()),
+                        _ => None,
+                    })
+                    .collect();
+
+                let msg_start = std::cmp::max(all_bot_messages.len() - 50, 0);
+                info!(
+                    "Summary Bot: {}",
+                    sumi.summary(&all_bot_messages[msg_start..].join("\n"))
+                        .unwrap()
+                );
+
+                let all_messages: Vec<String> = history_file
+                    .history
+                    .iter()
+                    .map(|m| match m.speaker {
+                        Speaker::Me => m.message.clone(),
+                        Speaker::Bot => m.message.clone(),
+                    })
+                    .collect();
+                let msg_start = std::cmp::max(all_messages.len() - 50, 0);
+
+                info!(
+                    "Summary: {}",
+                    sumi.summary(&all_messages[msg_start..].join("\n")).unwrap()
+                );
+            }
+
             let mut my_history = self.history.lock().unwrap();
             for past in history_file.history {
                 match past.speaker {

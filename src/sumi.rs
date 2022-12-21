@@ -10,23 +10,25 @@ pub struct Sumi {
 
 impl Sumi {
     pub fn new() -> Self {
-        let sumi_model = SummarizationModel::new(SummarizationConfig {
-            model_type: ModelType::Pegasus,
-            model_resource: Box::new(RemoteResource::from_pretrained(
-                PegasusModelResources::CNN_DAILYMAIL,
-            )),
-            config_resource: Box::new(RemoteResource::from_pretrained(
-                PegasusConfigResources::CNN_DAILYMAIL,
-            )),
-            vocab_resource: Box::new(RemoteResource::from_pretrained(
-                PegasusVocabResources::CNN_DAILYMAIL,
-            )),
-            // merges_resource: Box::new(RemoteResource::from_pretrained(
-            //     PegasusModelResources::CNN_DAILYMAIL,
-            // )),
-            ..Default::default()
-        })
-        .unwrap();
+        let model_type: ModelType = ModelType::Pegasus;
+        let sumi_config: SummarizationConfig = match model_type {
+            ModelType::Bart => Default::default(),
+            ModelType::Pegasus => SummarizationConfig {
+                model_type: ModelType::Pegasus,
+                model_resource: Box::new(RemoteResource::from_pretrained(
+                    PegasusModelResources::CNN_DAILYMAIL,
+                )),
+                config_resource: Box::new(RemoteResource::from_pretrained(
+                    PegasusConfigResources::CNN_DAILYMAIL,
+                )),
+                vocab_resource: Box::new(RemoteResource::from_pretrained(
+                    PegasusVocabResources::CNN_DAILYMAIL,
+                )),
+                ..Default::default()
+            },
+            _ => unimplemented!(),
+        };
+        let sumi_model = SummarizationModel::new(sumi_config).unwrap();
 
         Self { model: sumi_model }
     }
