@@ -39,7 +39,7 @@ WORKDIR /usr/local/src/alone
 RUN cargo build --release
 
 # Create the release container. Match the base OS used to build
-FROM pytorch/pytorch:1.12.0-cuda11.3-cudnn8-devel
+FROM pytorch/pytorch:1.12.0-cuda11.3-cudnn8-runtime
 LABEL authours="QuantumEntangledAndy <sheepchaan@gmail.com>"
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -59,6 +59,7 @@ COPY --from=build \
   /usr/local/src/alone/target/release/alone \
   /usr/local/bin/alone
 COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 WORKDIR /app
 
